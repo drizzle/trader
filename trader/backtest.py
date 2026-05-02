@@ -147,10 +147,22 @@ def run_backtest(
     if common_index is None or len(common_index) == 0:
         raise ValueError("No overlapping dates across symbols")
 
+    # Match the timezone-awareness of the bars' index when filtering by date.
+    # Alpaca returns UTC-aware timestamps; user-supplied start/end are naive ISO strings.
+    index_tz = common_index.tz
+
+    def _coerce(ts) -> pd.Timestamp:
+        ts = pd.Timestamp(ts)
+        if index_tz is not None and ts.tz is None:
+            ts = ts.tz_localize(index_tz)
+        elif index_tz is None and ts.tz is not None:
+            ts = ts.tz_convert(None)
+        return ts
+
     if start is not None:
-        common_index = common_index[common_index >= pd.Timestamp(start)]
+        common_index = common_index[common_index >= _coerce(start)]
     if end is not None:
-        common_index = common_index[common_index <= pd.Timestamp(end)]
+        common_index = common_index[common_index <= _coerce(end)]
     if len(common_index) < 2:
         raise ValueError("Date range too narrow after filtering")
 
