@@ -78,8 +78,7 @@ def create_app(cfg: Config) -> FastAPI:
     def strategy_view(request: Request):
         signals = _read_signals(cfg.db_path, limit=20)
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
-        return templates.TemplateResponse("strategy.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "strategy.html", {
             "active_tab": "strategy",
             "cfg": cfg,
             "signals": signals,
@@ -121,8 +120,7 @@ def create_app(cfg: Config) -> FastAPI:
                 "last_ts": equity_curve[-1]["ts_utc"],
             }
 
-        return templates.TemplateResponse("trades.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "trades.html", {
             "active_tab": "trades",
             "cfg": cfg,
             "positions": positions,
@@ -145,8 +143,7 @@ def create_app(cfg: Config) -> FastAPI:
             ),
             key=lambda r: r["mtime"], reverse=True,
         )
-        return templates.TemplateResponse("backtests.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "backtests.html", {
             "active_tab": "backtests",
             "cfg": cfg,
             "reports": list(reports),
