@@ -8,6 +8,8 @@ INSTALL_DIR="/opt/trader"
 SERVICE_USER="trader"
 
 echo "==> Pulling latest (as root — uses /root/.ssh/ deploy key)"
+# Repo is chowned to trader:trader; tell root's git that's safe.
+git config --global --add safe.directory "${INSTALL_DIR}" 2>/dev/null || true
 git -C "${INSTALL_DIR}" pull --ff-only
 
 echo "==> Restoring ${SERVICE_USER} ownership after the pull"
