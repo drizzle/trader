@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Strategy{% endblock %}
+{% block heading %}Strategy{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>Configuration</h2>
+  <div class="grid grid-3">
+    <div class="stat">
+      <div class="label">Strategy</div>
+      <div class="value" style="font-size:1.05rem">{{ cfg.strategy.name }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Universe</div>
+      <div class="value" style="font-size:1.05rem">{{ cfg.universe | join(", ") }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Tick interval</div>
+      <div class="value" style="font-size:1.05rem">{{ cfg.schedule.interval_minutes }} min</div>
+    </div>
+    <div class="stat">
+      <div class="label">Max position</div>
+      <div class="value" style="font-size:1.05rem">{{ "%.0f%%" | format(cfg.risk.max_position_pct * 100) }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Daily loss cap</div>
+      <div class="value" style="font-size:1.05rem">{{ "%.1f%%" | format(cfg.risk.daily_loss_limit_pct * 100) }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Cash buffer</div>
+      <div class="value" style="font-size:1.05rem">{{ "%.0f%%" | format(cfg.risk.min_cash_buffer_pct * 100) }}</div>
+    </div>
+  </div>
+  <pre style="margin-top:16px; padding:12px; background:#0d1117; border:1px solid #30363d;
+              border-radius:6px; font-size:0.8rem; overflow-x:auto; color:#c9d1d9">{{
+    cfg.strategy.params | tojson(indent=2) }}</pre>
+</div>
+
+<div class="card">
+  <h2>Recent Signals</h2>
+  {% if signals %}
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>Timestamp (UTC)</th><th>Strategy</th><th>Symbol</th>
+        <th>Target</th><th>Rationale</th>
+      </tr></thead>
+      <tbody>
+      {% for s in signals %}
+        <tr>
+          <td>{{ s.ts_utc }}</td>
+          <td>{{ s.strategy }}</td>
+          <td>{{ s.symbol }}</td>
+          <td>{{ "%.2f%%" | format(s.target_pct * 100) }}</td>
+          <td>{{ s.rationale }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty">No signals yet — bot may not have ticked while market was open.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

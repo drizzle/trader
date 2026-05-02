@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Backtests{% endblock %}
+{% block heading %}Backtests{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>Run a backtest</h2>
+  <p style="color:#8b949e; font-size:0.85rem; margin:0 0 12px">
+    Backtests are run from the command line (not the UI, to avoid long-running web requests).
+    SSH to the droplet and run:
+  </p>
+  <pre style="padding:12px; background:#0d1117; border:1px solid #30363d;
+              border-radius:6px; font-size:0.8rem; color:#c9d1d9; overflow-x:auto; margin:0">cd /opt/trader
+sudo -u trader .venv/bin/python -m trader backtest --start 2018-01-01 --end 2024-12-31</pre>
+  <p style="color:#8b949e; font-size:0.85rem; margin:12px 0 0">
+    The HTML report will appear in this list within a few seconds.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Saved Reports ({{ reports|length }})</h2>
+  {% if reports %}
+  <table>
+    <thead><tr><th>Report</th><th>Size</th><th>Modified</th></tr></thead>
+    <tbody>
+    {% for r in reports %}
+      <tr>
+        <td><a class="report" href="/backtests/{{ r.name }}" target="_blank">{{ r.name }}</a></td>
+        <td>{{ r.size_kb }} KB</td>
+        <td>{{ r.mtime | int | string }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">No backtest reports yet — run one from the CLI.</div>{% endif %}
+</div>
+
+{% endblock %}

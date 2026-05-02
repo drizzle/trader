@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>trader · {% block title %}{% endblock %}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         margin: 0; background: #0e1116; color: #e6edf3; }
+  header { padding: 12px 20px; border-bottom: 1px solid #30363d; display: flex;
+           justify-content: space-between; align-items: center; }
+  header h1 { font-size: 1rem; margin: 0; font-weight: 600; }
+  .badge { padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;
+           letter-spacing: 0.05em; }
+  .badge.paper { background: #1f6feb33; color: #58a6ff; }
+  .badge.live  { background: #f8514933; color: #f85149; }
+  .badge.kill  { background: #d29922; color: #0e1116; margin-left: 8px; }
+  nav { display: flex; gap: 2px; padding: 0 20px; border-bottom: 1px solid #30363d;
+        background: #0e1116; }
+  nav a { color: #8b949e; padding: 10px 16px; text-decoration: none; font-size: 0.9rem;
+          border-bottom: 2px solid transparent; }
+  nav a.active { color: #e6edf3; border-bottom-color: #58a6ff; }
+  nav a:hover { color: #e6edf3; }
+  main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+          padding: 16px; margin-bottom: 20px; }
+  .card h2 { margin: 0 0 12px; font-size: 1rem; color: #c9d1d9; font-weight: 600; }
+  .grid { display: grid; gap: 12px; }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .stat { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; }
+  .stat .label { font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-size: 1.4rem; font-weight: 600; margin-top: 4px; }
+  .pos { color: #3fb950; }
+  .neg { color: #f85149; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #21262d; }
+  th { color: #8b949e; font-weight: 500; text-transform: uppercase; font-size: 0.72rem;
+       letter-spacing: 0.05em; }
+  tr:hover td { background: #1c2128; }
+  .empty { color: #8b949e; padding: 20px; text-align: center; font-size: 0.9rem; }
+  .scroll { max-height: 480px; overflow-y: auto; }
+  a.report { color: #58a6ff; text-decoration: none; }
+  a.report:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>trader · {% block heading %}{% endblock %}</h1>
+  <div>
+    <span class="badge {{ mode|lower }}">{{ mode }}</span>
+    {% if kill_engaged %}<span class="badge kill">KILL SWITCH ON</span>{% endif %}
+  </div>
+</header>
+<nav>
+  <a href="/" class="{% if active_tab == 'strategy' %}active{% endif %}">Strategy</a>
+  <a href="/trades" class="{% if active_tab == 'trades' %}active{% endif %}">Trades & P&amp;L</a>
+  <a href="/backtests" class="{% if active_tab == 'backtests' %}active{% endif %}">Backtests</a>
+</nav>
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>

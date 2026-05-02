@@ -11,25 +11,33 @@ A minimal personal trading bot. Runs swing strategies on US equities via Alpaca,
 ```
 .
 ├── ARCHITECTURE.md         # the design rationale + V2/V3 plan
-├── pyproject.toml          # Python deps (alpaca-py, apscheduler, loguru, pydantic, ...)
+├── pyproject.toml          # Python deps
 ├── config.yaml             # strategy + runtime config (no secrets)
 ├── .env.example            # secrets template — copy to .env and fill in
 ├── trader/
-│   ├── main.py             # entry point: scheduler + tick loop
+│   ├── __main__.py         # entry: python -m trader <subcommand>
+│   ├── cli.py              # CLI dispatcher: run | backtest | dashboard
+│   ├── main.py             # live bot: scheduler + tick loop
+│   ├── backtest.py         # backtest engine
+│   ├── reports.py          # standalone HTML report (Plotly charts)
 │   ├── config.py           # config loader (env + yaml → typed pydantic models)
 │   ├── data.py             # Alpaca market-data wrapper
 │   ├── execution.py        # Alpaca trading wrapper (orders, positions, account)
 │   ├── risk.py             # kill switch, daily-loss limit, position-size caps
 │   ├── storage.py          # SQLite: signals, orders, fills, equity snapshots
 │   ├── alerts.py           # Telegram alerts (optional)
-│   └── strategy/
-│       ├── base.py         # Strategy ABC — produces target allocations
-│       └── sma_crossover.py# reference 50/200 SMA strategy on SPY
+│   ├── strategy/
+│   │   ├── base.py         # Strategy ABC — produces target allocations
+│   │   └── sma_crossover.py# reference 50/200 SMA strategy on SPY
+│   └── dashboard/
+│       ├── app.py          # FastAPI app (read-only)
+│       └── templates/      # Jinja2 templates for the 3 tabs
 ├── tests/                  # smoke tests
 └── deploy/
-    ├── trader.service      # systemd unit
-    ├── setup.sh            # first-time droplet provisioning
-    └── update.sh           # pull + restart
+    ├── trader.service              # systemd unit for the live bot
+    ├── trader-dashboard.service    # systemd unit for the dashboard
+    ├── setup.sh                    # first-time droplet provisioning
+    └── update.sh                   # pull + restart both services
 ```
 
 ---
@@ -164,6 +172,50 @@ That's it — pulls latest, reinstalls deps, restarts the service.
 5. Start with the smallest amount of capital you'd be sad to lose.
 
 ---
+
+## Backtesting
+
+Run a backtest against historical Alpaca bars. Same `Strategy.compute()` runs in backtest and live, so what you backtest is what you trade.
+
+**Locally:**
+```bash
+python -m trader backtest --start 2018-01-01 --end 2024-12-31
+# → writes data/backtests/sma_crossover_<timestamp>.html
+# Open in your browser to see equity curve, drawdown, metrics, trade log.
+```
+
+**On the droplet:**
+```bash
+cd /opt/trader
+sudo -u trader .venv/bin/python -m trader backtest --start 2018-01-01
+# Reports go to /opt/trader/data/backtests/ and appear in the dashboard's Backtests tab.
+```
+
+Useful flags: `--cash 50000`, `--slippage-bps 10`, `--commission 0.50`, `--lookback-days 3650`.
+
+The HTML reports are fully self-contained (Plotly inlined) — you can email them, archive them, diff strategy variants over time.
+
+## Live dashboard
+
+A FastAPI app on the droplet shows three views: current strategy state, trades + P&L since deployment, and a list of saved backtest reports. Bound to 127.0.0.1 only — access via SSH tunnel from your laptop.
+
+**On your laptop:**
+```bash
+ssh -L 8000:localhost:8000 root@<droplet-ip>
+# leave that terminal open, then in your browser:
+open http://localhost:8000
+```
+
+While the SSH session is alive, the dashboard is reachable at `http://localhost:8000`. Close the SSH session and it's gone — no public exposure.
+
+If you want to access it without re-tunneling each time, add this to `~/.ssh/config` on your laptop:
+```
+Host trader
+  HostName <droplet-ip>
+  User root
+  LocalForward 8000 localhost:8000
+```
+Then `ssh trader` does the tunnel + login in one step.
 
 ## Adding a new strategy
 

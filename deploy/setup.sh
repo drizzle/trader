@@ -51,14 +51,15 @@ python3 -m venv "${INSTALL_DIR}/.venv"
 "${INSTALL_DIR}/.venv/bin/pip" install --upgrade pip
 "${INSTALL_DIR}/.venv/bin/pip" install -e "${INSTALL_DIR}"
 
-echo "==> Creating data directory"
-mkdir -p "${INSTALL_DIR}/data"
+echo "==> Creating data + backtests directories"
+mkdir -p "${INSTALL_DIR}/data/backtests"
 
 echo "==> Setting ownership"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
-echo "==> Installing systemd unit"
-install -m 644 "${INSTALL_DIR}/deploy/trader.service" /etc/systemd/system/trader.service
+echo "==> Installing systemd units"
+install -m 644 "${INSTALL_DIR}/deploy/trader.service"           /etc/systemd/system/trader.service
+install -m 644 "${INSTALL_DIR}/deploy/trader-dashboard.service" /etc/systemd/system/trader-dashboard.service
 systemctl daemon-reload
 
 echo ""
@@ -71,12 +72,22 @@ echo "       sudo nano ${INSTALL_DIR}/.env       # paste your Alpaca keys"
 echo "       sudo chown ${SERVICE_USER}:${SERVICE_USER} ${INSTALL_DIR}/.env"
 echo "       sudo chmod 600 ${INSTALL_DIR}/.env"
 echo ""
-echo "  2. Start the service:"
+echo "  2. Start both services:"
 echo "       sudo systemctl enable --now trader"
+echo "       sudo systemctl enable --now trader-dashboard"
 echo ""
 echo "  3. Watch logs:"
 echo "       sudo journalctl -u trader -f"
+echo "       sudo journalctl -u trader-dashboard -f"
 echo ""
-echo "  4. To stop trading without uninstalling, engage the kill switch:"
+echo "  4. Open the dashboard from your laptop (NOT directly from the droplet):"
+echo "       ssh -L 8000:localhost:8000 root@<droplet-ip>"
+echo "       open http://localhost:8000   # in your laptop's browser"
+echo ""
+echo "  5. Run a backtest from the droplet:"
+echo "       cd ${INSTALL_DIR}"
+echo "       sudo -u ${SERVICE_USER} .venv/bin/python -m trader backtest --start 2018-01-01"
+echo ""
+echo "  6. To stop trading without uninstalling, engage the kill switch:"
 echo "       sudo -u ${SERVICE_USER} touch ${INSTALL_DIR}/data/STOP"
 echo "================================================================"

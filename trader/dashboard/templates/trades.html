@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Trades & P&L{% endblock %}
+{% block heading %}Trades & P&amp;L{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>Account ({{ mode }})</h2>
+  {% if account.error %}
+    <div class="empty">⚠️ {{ account.error }}</div>
+  {% else %}
+  <div class="grid grid-3">
+    <div class="stat"><div class="label">Equity</div>
+      <div class="value">${{ "{:,.2f}".format(account.equity) }}</div></div>
+    <div class="stat"><div class="label">Cash</div>
+      <div class="value">${{ "{:,.2f}".format(account.cash) }}</div></div>
+    <div class="stat"><div class="label">Buying Power</div>
+      <div class="value">${{ "{:,.2f}".format(account.buying_power) }}</div></div>
+  </div>
+  {% endif %}
+</div>
+
+{% if pnl %}
+<div class="card">
+  <h2>P&amp;L Since Deployment</h2>
+  <div class="grid grid-3">
+    <div class="stat">
+      <div class="label">Absolute</div>
+      <div class="value {{ 'pos' if pnl.abs >= 0 else 'neg' }}">
+        {{ '+' if pnl.abs >= 0 else '' }}${{ "{:,.2f}".format(pnl.abs) }}
+      </div>
+    </div>
+    <div class="stat">
+      <div class="label">Percentage</div>
+      <div class="value {{ 'pos' if pnl.pct >= 0 else 'neg' }}">
+        {{ "%+.2f%%" | format(pnl.pct) }}
+      </div>
+    </div>
+    <div class="stat">
+      <div class="label">Period</div>
+      <div class="value" style="font-size:0.85rem">
+        {{ pnl.first_ts[:10] }} → {{ pnl.last_ts[:10] }}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Equity Curve</h2>
+  <canvas id="equityChart" height="100"></canvas>
+</div>
+
+<div class="card">
+  <h2>Open Positions</h2>
+  {% if positions %}
+  <table>
+    <thead><tr><th>Symbol</th><th>Qty</th><th>Avg Entry</th><th>Market Value</th></tr></thead>
+    <tbody>
+    {% for p in positions %}
+      <tr>
+        <td>{{ p.symbol }}</td><td>{{ p.qty }}</td>
+        <td>${{ "{:,.2f}".format(p.avg_entry_price) }}</td>
+        <td>${{ "{:,.2f}".format(p.market_value) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">No open positions.</div>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Recent Orders</h2>
+  {% if orders %}
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>Timestamp (UTC)</th><th>Symbol</th><th>Side</th><th>Qty</th>
+        <th>Status</th><th>Filled</th><th>Avg Fill</th>
+      </tr></thead>
+      <tbody>
+      {% for o in orders %}
+        <tr>
+          <td>{{ o.ts_utc }}</td>
+          <td>{{ o.symbol }}</td>
+          <td class="{{ 'pos' if o.side == 'buy' else 'neg' }}">{{ o.side|upper }}</td>
+          <td>{{ o.qty }}</td>
+          <td>{{ o.status }}</td>
+          <td>{{ o.filled_qty or 0 }}</td>
+          <td>{% if o.filled_avg_price %}${{ "%.2f" | format(o.filled_avg_price) }}{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty">No orders yet.</div>{% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  const data = {{ equity_curve_json | safe }};
+  if (data && data.length > 0) {
+    const ctx = document.getElementById('equityChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.map(d => d.ts_utc),
+        datasets: [{
+          label: 'Equity ($)',
+          data: data.map(d => d.equity),
+          borderColor: '#58a6ff',
+          backgroundColor: 'rgba(88,166,255,0.1)',
+          tension: 0.15,
+          pointRadius: 0,
+          fill: true,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: '#e6edf3' } } },
+        scales: {
+          x: { ticks: { color: '#8b949e', maxTicksLimit: 8 }, grid: { color: '#21262d' } },
+          y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }
+        }
+      }
+    });
+  } else {
+    document.getElementById('equityChart').replaceWith(
+      Object.assign(document.createElement('div'),
+        { className: 'empty', textContent: 'Not enough equity snapshots yet.' })
+    );
+  }
+</script>
+
+{% endblock %}

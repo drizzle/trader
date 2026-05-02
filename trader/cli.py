@@ -1,0 +1,126 @@
+"""Command-line dispatcher.
+
+Usage:
+    python -m trader run            # start the live trading bot (default; same as before)
+    python -m trader backtest       # run a backtest, write HTML report
+    python -m trader dashboard      # start the FastAPI dashboard
+
+For backwards compat, `python -m trader.main` still runs the bot directly.
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from loguru import logger
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    from .main import run
+    run()
+    return 0
+
+
+def _cmd_backtest(args: argparse.Namespace) -> int:
+    from .backtest import run_backtest
+    from .config import load_config
+    from .data import DataClient
+    from .reports import render_report
+    from .strategy import build_strategy
+
+    cfg = load_config(args.config)
+    logger.remove()
+    logger.add(sys.stderr, level=cfg.log_level)
+
+    strategy = build_strategy(cfg.strategy.name, cfg.strategy.params)
+    data = DataClient(cfg.alpaca)
+
+    logger.info(
+        f"Fetching {args.lookback_days} days of bars for {strategy.universe}..."
+    )
+    bars = data.daily_bars(strategy.universe, lookback_days=args.lookback_days)
+    if not bars or all(df.empty for df in bars.values()):
+        logger.error("No bars returned — check API keys and symbol list.")
+        return 1
+
+    logger.info(
+        f"Running backtest: cash=${args.cash:,.0f} slippage={args.slippage_bps}bps "
+        f"commission=${args.commission:.2f}"
+    )
+    result = run_backtest(
+        strategy=strategy,
+        bars=bars,
+        initial_cash=args.cash,
+        commission=args.commission,
+        slippage_bps=args.slippage_bps,
+        start=args.start,
+        end=args.end,
+    )
+
+    metrics = result.metrics
+    logger.info("=== Backtest metrics ===")
+    for k, v in metrics.items():
+        logger.info(f"  {k}: {v}")
+
+    out_dir = (cfg.data_dir / "backtests").resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if args.output:
+        out_path = Path(args.output)
+    else:
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        out_path = out_dir / f"{cfg.strategy.name}_{ts}.html"
+
+    written = render_report(result, out_path)
+    logger.info(f"Report written: {written}")
+    print(str(written))   # so callers can pipe / parse
+    return 0
+
+
+def _cmd_dashboard(args: argparse.Namespace) -> int:
+    import uvicorn
+    from .dashboard.app import create_app
+    from .config import load_config
+
+    cfg = load_config(args.config)
+    app = create_app(cfg)
+    uvicorn.run(app, host=args.host, port=args.port, log_level=cfg.log_level.lower())
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="trader", description="Personal trading platform.")
+    sub = parser.add_subparsers(dest="cmd")
+
+    p_run = sub.add_parser("run", help="Start the live trading bot.")
+    p_run.set_defaults(func=_cmd_run)
+
+    p_bt = sub.add_parser("backtest", help="Run a backtest, output an HTML report.")
+    p_bt.add_argument("--config", default="config.yaml")
+    p_bt.add_argument("--lookback-days", type=int, default=2500,
+                      help="How many days of history to fetch (default ~10y).")
+    p_bt.add_argument("--start", help="ISO date e.g. 2018-01-01")
+    p_bt.add_argument("--end", help="ISO date e.g. 2024-12-31")
+    p_bt.add_argument("--cash", type=float, default=100_000.0)
+    p_bt.add_argument("--commission", type=float, default=0.0)
+    p_bt.add_argument("--slippage-bps", type=float, default=5.0)
+    p_bt.add_argument("--output", help="Path to write report (default: data/backtests/<name>.html)")
+    p_bt.set_defaults(func=_cmd_backtest)
+
+    p_dash = sub.add_parser("dashboard", help="Start the FastAPI dashboard.")
+    p_dash.add_argument("--config", default="config.yaml")
+    p_dash.add_argument("--host", default="127.0.0.1",
+                        help="Bind host. Keep 127.0.0.1 and access via SSH tunnel.")
+    p_dash.add_argument("--port", type=int, default=8000)
+    p_dash.set_defaults(func=_cmd_dashboard)
+
+    args = parser.parse_args(argv)
+    if not args.cmd:
+        parser.print_help()
+        return 1
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
