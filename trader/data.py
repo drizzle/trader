@@ -4,12 +4,19 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+from alpaca.data.enums import DataFeed
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from loguru import logger
 
 from .config import AlpacaConfig
+
+
+# Free Alpaca accounts can only access the IEX feed (not SIP) and have a
+# ~15-minute restriction on the most recent data. We pad the end time to
+# stay safely outside that window.
+_FREE_TIER_DELAY_MINUTES = 20
 
 
 class DataClient:
@@ -24,7 +31,8 @@ class DataClient:
 
         Returns a dict mapping symbol -> DataFrame (indexed by timestamp).
         """
-        end = datetime.now(timezone.utc)
+        # Stay outside the free-tier 15-minute restriction.
+        end = datetime.now(timezone.utc) - timedelta(minutes=_FREE_TIER_DELAY_MINUTES)
         # Add slack so we have enough trading days even after weekends/holidays.
         start = end - timedelta(days=lookback_days + 30)
 
@@ -33,6 +41,7 @@ class DataClient:
             timeframe=TimeFrame.Day,
             start=start,
             end=end,
+            feed=DataFeed.IEX,   # free tier; switch to DataFeed.SIP if you upgrade
         )
 
         logger.debug(f"Fetching daily bars for {symbols} from {start.date()} to {end.date()}")
