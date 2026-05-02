@@ -7,8 +7,11 @@ set -euo pipefail
 INSTALL_DIR="/opt/trader"
 SERVICE_USER="trader"
 
-echo "==> Pulling latest"
-sudo -u "${SERVICE_USER}" git -C "${INSTALL_DIR}" pull --ff-only
+echo "==> Pulling latest (as root — uses /root/.ssh/ deploy key)"
+git -C "${INSTALL_DIR}" pull --ff-only
+
+echo "==> Restoring ${SERVICE_USER} ownership after the pull"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
 echo "==> Updating dependencies"
 "${INSTALL_DIR}/.venv/bin/pip" install -e "${INSTALL_DIR}"
