@@ -1,0 +1,29 @@
+# Strategy + runtime config. Secrets live in .env, NOT here.
+
+# Universe of tickers the strategy will consider.
+universe:
+  - SPY
+
+# Which strategy to run. Must match a class registered in trader/strategy/__init__.py
+strategy:
+  name: sma_crossover
+  params:
+    fast_window: 50
+    slow_window: 200
+    target_symbol: SPY
+    target_allocation: 0.95   # fraction of equity to deploy when long signal active
+
+# How often to run the strategy tick (during market hours only).
+schedule:
+  interval_minutes: 15
+
+# Risk caps. Apply to BOTH paper and live, but matter most for live.
+risk:
+  max_position_pct: 1.0           # max fraction of equity in a single position
+  daily_loss_limit_pct: 0.03      # if equity drops >3% from start-of-day, halt + flatten
+  min_cash_buffer_pct: 0.02       # always keep at least 2% in cash
+  kill_switch_path: ./data/STOP   # if this file exists, no orders are placed
+
+# Paths (can be overridden by DATA_DIR env var)
+storage:
+  db_filename: trader.db
