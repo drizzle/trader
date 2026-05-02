@@ -38,7 +38,7 @@ A minimal personal trading bot. Runs swing strategies on US equities via Alpaca,
 
 ```bash
 # 1. Set up
-python3.11 -m venv .venv
+python3 -m venv .venv   # Python 3.10+ required
 source .venv/bin/activate
 pip install -e ".[dev]"
 

@@ -15,8 +15,18 @@ SERVICE_USER="trader"
 echo "==> Updating apt and installing prerequisites"
 apt-get update -y
 apt-get install -y --no-install-recommends \
-    python3.11 python3.11-venv python3-pip \
+    python3 python3-venv python3-pip \
     git curl ca-certificates tzdata
+
+# Verify Python is >= 3.10 (we use modern type hints + pydantic v2)
+PY_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
+PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+if [[ "$PY_MAJOR" -lt 3 || ( "$PY_MAJOR" -eq 3 && "$PY_MINOR" -lt 10 ) ]]; then
+    echo "ERROR: Python 3.10+ required, found $PY_VERSION" >&2
+    exit 1
+fi
+echo "==> Using Python $PY_VERSION"
 
 echo "==> Creating ${SERVICE_USER} user"
 if ! id -u "${SERVICE_USER}" >/dev/null 2>&1; then
@@ -37,7 +47,7 @@ else
 fi
 
 echo "==> Setting up Python virtualenv"
-python3.11 -m venv "${INSTALL_DIR}/.venv"
+python3 -m venv "${INSTALL_DIR}/.venv"
 "${INSTALL_DIR}/.venv/bin/pip" install --upgrade pip
 "${INSTALL_DIR}/.venv/bin/pip" install -e "${INSTALL_DIR}"
 
