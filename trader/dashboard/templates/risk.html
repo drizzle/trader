@@ -16,20 +16,28 @@
       🛑 KILL SWITCH ENGAGED
       <div style="font-weight:400; font-size:0.85rem; margin-top:4px">{{ kill_reason }}</div>
     </div>
-    <form method="post" action="/risk/kill-switch/release">
-      <button type="submit" style="padding:10px 18px; border:0; border-radius:6px;
-              background:#3fb950; color:#0e1116; font-weight:600; cursor:pointer">
-        Release kill switch
-      </button>
-    </form>
+    {% if read_only %}
+      <div class="empty">Read-only dashboard: release the kill switch over SSH.</div>
+    {% else %}
+      <form method="post" action="/risk/kill-switch/release">
+        <button type="submit" style="padding:10px 18px; border:0; border-radius:6px;
+                background:#3fb950; color:#0e1116; font-weight:600; cursor:pointer">
+          Release kill switch
+        </button>
+      </form>
+    {% endif %}
   {% else %}
-    <form method="post" action="/risk/kill-switch/engage"
-          onsubmit="return confirm('Engage kill switch? The bot will stop submitting new orders until released.');">
-      <button type="submit" style="padding:10px 18px; border:0; border-radius:6px;
-              background:#f85149; color:#fff; font-weight:600; cursor:pointer">
-        Engage kill switch
-      </button>
-    </form>
+    {% if read_only %}
+      <div class="empty">Read-only dashboard: engage the kill switch over SSH.</div>
+    {% else %}
+      <form method="post" action="/risk/kill-switch/engage"
+            onsubmit="return confirm('Engage kill switch? The bot will stop submitting new orders until released.');">
+        <button type="submit" style="padding:10px 18px; border:0; border-radius:6px;
+                background:#f85149; color:#fff; font-weight:600; cursor:pointer">
+          Engage kill switch
+        </button>
+      </form>
+    {% endif %}
   {% endif %}
   <p style="color:#8b949e; font-size:0.75rem; margin-top:12px">
     File-based switch at <code>{{ kill_path }}</code>. SSH equivalent:

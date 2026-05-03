@@ -13,13 +13,16 @@ default — access via SSH tunnel:
 """
 from __future__ import annotations
 
+import os
 import json
+import secrets
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
 from ..config import Config
@@ -81,8 +84,44 @@ def _available_strategies(active_name: str) -> list[dict]:
     return strategies
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.lower() in {"1", "true", "yes", "on"}
+
+
 def create_app(cfg: Config) -> FastAPI:
-    app = FastAPI(title="trader dashboard")
+    security = HTTPBasic(auto_error=False)
+    dashboard_user = os.environ.get("DASHBOARD_USERNAME", "trader")
+    dashboard_password = os.environ.get("DASHBOARD_PASSWORD")
+    require_auth = _env_bool("DASHBOARD_REQUIRE_AUTH", bool(dashboard_password))
+    read_only = _env_bool("DASHBOARD_READ_ONLY", True)
+
+    def _auth(credentials: HTTPBasicCredentials | None = Depends(security)) -> None:
+        if not require_auth:
+            return
+        if not dashboard_password:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Dashboard auth is required but DASHBOARD_PASSWORD is not set.",
+            )
+        if credentials is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+        user_ok = secrets.compare_digest(credentials.username, dashboard_user)
+        password_ok = secrets.compare_digest(credentials.password, dashboard_password)
+        if not (user_ok and password_ok):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+
+    app = FastAPI(title="trader dashboard", dependencies=[Depends(_auth)])
 
     # Templates live next to this file.
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -105,6 +144,7 @@ def create_app(cfg: Config) -> FastAPI:
             "available_strategies": _available_strategies(cfg.strategy.name),
             "signals": signals,
             "kill_engaged": kill_engaged,
+            "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
         })
 
@@ -152,6 +192,7 @@ def create_app(cfg: Config) -> FastAPI:
             "orders": orders,
             "equity_curve_json": json.dumps(equity_curve, default=str),
             "pnl": pnl,
+            "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
         })
 
@@ -204,11 +245,14 @@ def create_app(cfg: Config) -> FastAPI:
             "positions": positions,
             "sod_equity": sod_equity,
             "daily_loss_pct": daily_loss_pct,
+            "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
         })
 
     @app.post("/risk/kill-switch/engage")
     def kill_switch_engage():
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
         kill_path = Path(cfg.risk.kill_switch_path)
         kill_path.parent.mkdir(parents=True, exist_ok=True)
         kill_path.write_text(
@@ -218,6 +262,8 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.post("/risk/kill-switch/release")
     def kill_switch_release():
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
         kill_path = Path(cfg.risk.kill_switch_path)
         if kill_path.exists():
             kill_path.unlink()
@@ -242,6 +288,7 @@ def create_app(cfg: Config) -> FastAPI:
             "kill_engaged": kill_engaged,
             "reports": list(reports),
             "available_strategies": _available_strategies(cfg.strategy.name),
+            "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
         })
 
