@@ -40,9 +40,7 @@
         <option value="10">10 years</option>
       </select>
     </label>
-    <button type="submit" class="bt-launch" {% if read_only %}disabled title="Dashboard is read-only"{% endif %}>
-      Launch backtest
-    </button>
+    <button type="submit" class="bt-launch">Launch backtest</button>
   </form>
   {% if running_jobs %}
     <div class="bt-running">
