@@ -15,6 +15,8 @@ from trader.config import RiskConfig
 from trader.risk import RiskCheck
 from trader.storage import Storage
 from trader.strategy.sma_crossover import SmaCrossoverStrategy
+from trader.strategy import yypt_tqqq_rsi
+from trader.strategy.yypt_tqqq_rsi import YyptTqqqRsiStrategy
 
 
 def _bars_from_closes(closes: list[float]) -> pd.DataFrame:
@@ -61,6 +63,62 @@ def test_sma_strategy_insufficient_data():
 def test_sma_strategy_validates_window_order():
     with pytest.raises(ValueError):
         SmaCrossoverStrategy(fast_window=200, slow_window=50)
+
+
+def _yypt_targets(signals):
+    return {s.symbol: s.target_pct for s in signals}
+
+
+def _patch_yypt_indicators(monkeypatch, rsi_value: float, sma_values: dict[int, float]):
+    def fake_rsi(series, period):
+        return pd.Series([rsi_value] * len(series), index=series.index)
+
+    def fake_sma(series, window):
+        return pd.Series([sma_values[window]] * len(series), index=series.index)
+
+    monkeypatch.setattr(yypt_tqqq_rsi, "rsi", fake_rsi)
+    monkeypatch.setattr(yypt_tqqq_rsi, "sma", fake_sma)
+
+
+@pytest.mark.parametrize(
+    "rsi_value,sma_values,expected_symbol",
+    [
+        (20.0, {200: 999.0, 20: 999.0}, "TQQQ"),
+        (85.0, {200: 0.0, 20: 0.0}, "SHV"),
+        (50.0, {200: 90.0, 20: 999.0}, "TQQQ"),
+        (50.0, {200: 110.0, 20: 105.0}, "SHV"),
+        (50.0, {200: 110.0, 20: 95.0}, "TQQQ"),
+    ],
+)
+def test_yypt_strategy_matches_composer_json_tree(
+    monkeypatch, rsi_value, sma_values, expected_symbol
+):
+    _patch_yypt_indicators(monkeypatch, rsi_value, sma_values)
+    strat = YyptTqqqRsiStrategy(target_allocation=1.0)
+    bars = {
+        "TQQQ": _bars_from_closes([100.0] * 220),
+        "SHV": _bars_from_closes([100.0] * 220),
+    }
+
+    targets = _yypt_targets(strat.compute(bars))
+
+    assert targets[expected_symbol] == pytest.approx(1.0)
+    other_symbol = "SHV" if expected_symbol == "TQQQ" else "TQQQ"
+    assert targets[other_symbol] == pytest.approx(0.0)
+
+
+def test_yypt_strategy_uses_latest_supplied_bar_as_current_price(monkeypatch):
+    _patch_yypt_indicators(monkeypatch, 50.0, {200: 100.0, 20: 100.0})
+    strat = YyptTqqqRsiStrategy(target_allocation=1.0)
+    bars = {
+        "TQQQ": _bars_from_closes([80.0] * 219 + [120.0]),
+        "SHV": _bars_from_closes([100.0] * 220),
+    }
+
+    targets = _yypt_targets(strat.compute(bars))
+
+    assert targets["TQQQ"] == pytest.approx(1.0)
+    assert targets["SHV"] == pytest.approx(0.0)
 
 
 def test_risk_position_size_limit():

@@ -1,16 +1,16 @@
-"""YYPT | TQQQ FTLT — Reddit-popularized leveraged ETF rotation.
+"""YYPT | TQQQ / SHV — Reddit-popularized leveraged ETF rotation.
 
-Decision tree (verified against the expanded Composer screenshot):
+Decision tree (verified against the Composer JSON export):
 
     IF RSI(10) of TQQQ < 30                       →  TQQQ   (oversold mean-revert)
     ELIF RSI(10) of TQQQ > 80                     →  SHV    (overbought defensive)
     ELSE  (RSI in [30, 80]):
-        IF TQQQ.close > SMA(200)                  →  TQQQ   (uptrend, hold leverage)
+        IF current price of TQQQ > SMA(200)       →  TQQQ   (uptrend, hold leverage)
         ELSE (downtrend):
-            IF TQQQ.close < SMA(20)               →  SHV    (downtrend AND weak short-term)
+            IF current price of TQQQ < SMA(20)    →  SHV    (downtrend AND weak short-term)
             ELSE                                  →  TQQQ   (downtrend bounce, mean-revert)
 
-Universe: just TQQQ and SHV. The strategy never holds QQQ.
+Universe: just TQQQ and SHV. The exported tree never holds QQQ or FTLT.
 
 ⚠️  RISK NOTES — READ BEFORE USING WITH REAL MONEY:
     - TQQQ is a 3x daily-leveraged ETF. Volatility decay erodes long-term
@@ -64,7 +64,7 @@ class YyptTqqqRsiStrategy(Strategy):
         return [self.risk_symbol, self.defensive_symbol]
 
     def _allocate(self, target: str, rationale: str) -> list[Signal]:
-        """Return signals that put 100% (less buffer) in `target` and 0% in the other."""
+        """Return signals that put target_allocation in `target` and 0% in the other."""
         return [
             Signal(
                 s,
@@ -84,15 +84,17 @@ class YyptTqqqRsiStrategy(Strategy):
                 return [Signal(s, 0.0, f"missing bars for {sym}") for s in self.universe]
 
         risk_bars = bars[self.risk_symbol]
-        if len(risk_bars) < self.sma_long_window + 1:
+        if len(risk_bars) < self.sma_long_window:
             logger.debug(
                 f"{self.name}: insufficient {self.risk_symbol} history "
-                f"({len(risk_bars)} < {self.sma_long_window + 1})"
+                f"({len(risk_bars)} < {self.sma_long_window})"
             )
             return [Signal(s, 0.0, "warmup") for s in self.universe]
 
-        # Decisions on bars up to t-1. No look-ahead.
-        closes = risk_bars["close"].iloc[:-1]
+        # Use the latest bar supplied by the caller as Composer's "current-price".
+        # The backtester already excludes the fill day, so dropping another bar
+        # here would add an unintended one-day lag.
+        closes = risk_bars["close"]
         last_close = float(closes.iloc[-1])
         rsi_val = float(rsi(closes, self.rsi_period).iloc[-1])
         sma_long = float(sma(closes, self.sma_long_window).iloc[-1])
