@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Advisor{% endblock %}
+{% block heading %}Advisor{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>AI Hedge Fund</h2>
+  <div class="status-row">
+    <span class="status-pill {{ 'ok' if advisor.status == 'ok' else ('warn' if advisor.status == 'stale' else 'bad') }}">
+      {% if advisor.status == "ok" %}READY{% elif advisor.status == "stale" %}STALE{% else %}MISSING{% endif %}
+    </span>
+    <span class="muted">Output: <code>{{ advisor.path }}</code></span>
+  </div>
+  {% if advisor.error %}
+    <div class="empty">{{ advisor.error }}</div>
+  {% else %}
+    <p class="muted" style="font-size:0.9rem">Generated {{ advisor.age_label }}{% if advisor.generated_at %} · {{ advisor.generated_at }}{% endif %}</p>
+  {% endif %}
+  <p class="muted" style="font-size:0.85rem; line-height:1.5">
+    This tab is read-only. It displays advisory output from the external AI Hedge Fund repo for the symbols currently deployed by your strategy.
+    Treat it as research context, not an automatic trading input.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Universe Advisory</h2>
+  <table>
+    <thead><tr>
+      <th>Symbol</th><th>Decision</th><th>Confidence</th><th>Quantity</th><th>Reasoning</th>
+    </tr></thead>
+    <tbody>
+    {% for row in advisor.rows %}
+      <tr>
+        <td>{{ row.symbol }}</td>
+        <td><span class="decision {{ row.tone }}">{{ row.action }}</span></td>
+        <td>{% if row.confidence is not none %}{{ row.confidence }}{% else %}n/a{% endif %}</td>
+        <td>{% if row.quantity is not none %}{{ row.quantity }}{% else %}n/a{% endif %}</td>
+        <td>{{ row.reasoning or "No advisory output for this symbol yet." }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Service Setup</h2>
+  <p class="muted" style="font-size:0.9rem; line-height:1.5">
+    Initial advisor service: <a class="report" href="{{ advisor.repo_url }}" target="_blank">AI Hedge Fund</a>.
+    The upstream project is educational and does not place trades. Run it as a separate service or cron job, then write JSON to the path above.
+  </p>
+  <pre class="code-block">cd /opt
+sudo git clone https://github.com/virattt/ai-hedge-fund.git
+sudo chown -R trader:trader ai-hedge-fund
+cd /opt/ai-hedge-fund
+sudo -u trader poetry install</pre>
+  <pre class="code-block"># Expected dashboard output file:
+mkdir -p /opt/trader/data/advisors
+
+# JSON shape the dashboard reads:
+{
+  "generated_at": "2026-05-03T00:00:00+00:00",
+  "service": "AI Hedge Fund",
+  "decisions": {
+    "TQQQ": {"action": "BUY", "confidence": 0.72, "reasoning": "advisor summary"},
+    "SHV": {"action": "SELL", "confidence": 0.64, "reasoning": "advisor summary"}
+  }
+}</pre>
+  <pre class="code-block"># Upstream CLI shape from the repo:
+poetry run python src/main.py --ticker {{ cfg.universe | join(",") }}</pre>
+</div>
+
+{% if advisor.analyst_signals %}
+<div class="card">
+  <h2>Raw Analyst Signals</h2>
+  <pre class="logic-block">{{ advisor.analyst_signals | tojson(indent=2) }}</pre>
+</div>
+{% endif %}
+
+{% endblock %}

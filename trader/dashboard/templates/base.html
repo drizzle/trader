@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <title>trader · {% block title %}{% endblock %}</title>
 <style>
   * { box-sizing: border-box; }
@@ -33,6 +36,7 @@
   .stat .value { font-size: 1.4rem; font-weight: 600; margin-top: 4px; }
   .pos { color: #3fb950; }
   .neg { color: #f85149; }
+  .hold { color: #d29922; }
   table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #21262d; }
   th { color: #8b949e; font-weight: 500; text-transform: uppercase; font-size: 0.72rem;
@@ -62,6 +66,12 @@
                               border: 1px solid #30363d; border-radius: 6px;
                               font-size: 0.82rem; overflow-x: auto; color: #c9d1d9; }
   .logic-block { white-space: pre-wrap; line-height: 1.5; }
+  .decision { display: inline-block; border-radius: 999px; padding: 5px 9px;
+              font-size: 0.78rem; font-weight: 800; letter-spacing: 0.05em; }
+  .decision.buy { background: #238636; color: #ffffff; }
+  .decision.sell { background: #da3633; color: #ffffff; }
+  .decision.hold { background: #d29922; color: #0d1117; }
+  .decision.nodata { background: #30363d; color: #c9d1d9; }
   @media (max-width: 700px) {
     body { font-size: 16px; }
     header { padding: 12px; align-items: flex-start; gap: 8px; }
@@ -106,6 +116,7 @@
   <a href="/trades" class="{% if active_tab == 'trades' %}active{% endif %}">Trades & P&amp;L</a>
   <a href="/risk" class="{% if active_tab == 'risk' %}active{% endif %}">Risk</a>
   <a href="/backtests" class="{% if active_tab == 'backtests' %}active{% endif %}">Backtests</a>
+  <a href="/advisors" class="{% if active_tab == 'advisors' %}active{% endif %}">Advisor</a>
 </nav>
 <main>{% block content %}{% endblock %}</main>
 </body>

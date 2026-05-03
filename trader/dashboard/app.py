@@ -1,10 +1,11 @@
 """FastAPI dashboard.
 
-Four views:
+Five views:
   /            → system health, strategy config, and strategy reference
   /trades      → positions + recent fills + equity curve since deployment
   /risk        → all risk caps and current exposures vs limits
   /backtests   → list of HTML reports under data/backtests/
+  /advisors    → read-only advisory output from external advisor services
 
 Read-only by default. Binds to 127.0.0.1 by default — access via SSH tunnel:
     ssh -L 8000:localhost:8000 root@<droplet-ip>
@@ -13,6 +14,7 @@ Read-only by default. Binds to 127.0.0.1 by default — access via SSH tunnel:
 from __future__ import annotations
 
 import os
+import base64
 import inspect
 import json
 import resource
@@ -24,13 +26,17 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from ..config import Config
 from ..execution import ExecutionClient
 from ..storage import Storage
 from ..strategy import STRATEGIES
+
+_APPLE_TOUCH_ICON_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAACWklEQVR42u3doRWEQBBEQRI4geEEjqiIkNBwKALg/CkEj9c7W+IH0EzpZfiM30uq0uAjCGgJaAloCWgBLQEtAS0BLQEtoKXOQK/bJb0W0AIaaAEtAS0BLaCBFtBAC+j/pnmRbge0gAZaQAMtoIEW0AIaaAENtIAGWkBLQAtooAU00AIaaAEtAS2ggRbQQAtooAW0BLSABlpAAy2ggRbQEtACGmgBDbSATgC9H2dU9gLtwEADDTTQQAMNNNBAAw20vUA7MNBAAw000EADDTTQQANtL9BAA10JdBqgNHCt7wUaaKCBBhpooIEGGmiggQYaaKCBBhpooIEGGmiggQYaaKCBBhpooIFOrre9QAMNNNBAAw000EADbS/QDgw00EADDTTQQAMNNNBA2wu0AwMNNNBAAw000EADDTTQ9gINNNBAAw000EADDTTQQDuwvUADDTTQQAMNNNBAAw000A5sL9BAAw000EADDTTQQAMNtAPbCzTQQAMNNNBAAw000EAD7cD2Ag000EC3BdRPg4AGmiggQYaaKCBBhpooIEGGmiggQYaaKCBBhpooIEGGmiggQYa6GTQaYDSwFXbCzTQQAMNNNBAAw000PYC7cBAAw000EADDTTQQAMNtL1AOzDQQAMNdC3Q8tAM0AIaaAEtAS2ggRbQQAtooAW0BLSABlpAAy2ggRbQEtACGmgBDbSABlpAS0ALaKAFNNACGmgBLQEtoIEW0EALaKBVD7T0ZEALaKAFtAS0BLSABlpAA63+QEvJAS2gJaAloCWgBbQEtAS0BLQEtICWGu8HpCQRe+zufA4AAAAASUVORK5CYII="
+)
 
 
 def _read_signals(db_path: Path, limit: int = 50) -> list[dict]:
@@ -76,6 +82,98 @@ def _read_latest_row(db_path: Path, table: str) -> dict | None:
         c.row_factory = sqlite3.Row
         row = c.execute(f"SELECT * FROM {table} ORDER BY id DESC LIMIT 1").fetchone()
         return dict(row) if row else None
+
+
+def _read_advisor_json(cfg: Config) -> tuple[dict | None, Path]:
+    path = Path(
+        os.environ.get(
+            "AI_HEDGE_FUND_ADVICE_PATH",
+            str(cfg.data_dir / "advisors" / "ai_hedge_fund.json"),
+        )
+    )
+    if not path.exists():
+        return None, path
+    try:
+        return json.loads(path.read_text()), path
+    except json.JSONDecodeError:
+        return {"error": "Advisor JSON file is not valid JSON."}, path
+
+
+def _normalize_decision(raw: object) -> dict:
+    if isinstance(raw, str):
+        return {"action": raw.upper(), "confidence": None, "reasoning": ""}
+    if not isinstance(raw, dict):
+        return {"action": "NO DATA", "confidence": None, "reasoning": ""}
+
+    action = (
+        raw.get("action")
+        or raw.get("signal")
+        or raw.get("decision")
+        or raw.get("recommendation")
+        or "NO DATA"
+    )
+    confidence = raw.get("confidence")
+    reasoning = raw.get("reasoning") or raw.get("rationale") or raw.get("reason") or ""
+    quantity = raw.get("quantity")
+    return {
+        "action": str(action).upper(),
+        "confidence": confidence,
+        "reasoning": reasoning,
+        "quantity": quantity,
+    }
+
+
+def _advisor_state(cfg: Config) -> dict:
+    raw, path = _read_advisor_json(cfg)
+    generated_at = None
+    decisions_raw = {}
+    analyst_signals = {}
+    error = None
+
+    if raw is None:
+        error = "No AI Hedge Fund advisory output found yet."
+    elif raw.get("error"):
+        error = raw["error"]
+    else:
+        generated_at = raw.get("generated_at") or raw.get("timestamp") or raw.get("as_of")
+        decisions_raw = raw.get("decisions") or raw.get("portfolio_decisions") or {}
+        analyst_signals = raw.get("analyst_signals") or {}
+
+    rows = []
+    for symbol in cfg.universe:
+        raw_decision = decisions_raw.get(symbol) if isinstance(decisions_raw, dict) else None
+        decision = _normalize_decision(raw_decision)
+        action = decision["action"]
+        if action in {"BUY", "LONG", "COVER"}:
+            tone = "buy"
+        elif action in {"SELL", "SHORT"}:
+            tone = "sell"
+        elif action in {"HOLD", "NEUTRAL"}:
+            tone = "hold"
+        else:
+            tone = "nodata"
+        rows.append({
+            "symbol": symbol,
+            "action": action,
+            "tone": tone,
+            "confidence": decision["confidence"],
+            "quantity": decision.get("quantity"),
+            "reasoning": decision["reasoning"],
+        })
+
+    age_label, age_seconds = _age_label(generated_at)
+    status = "missing" if error else ("stale" if age_seconds and age_seconds > 3600 * 24 else "ok")
+    return {
+        "service": "AI Hedge Fund",
+        "repo_url": "https://github.com/virattt/ai-hedge-fund",
+        "path": str(path),
+        "generated_at": generated_at,
+        "age_label": age_label,
+        "status": status,
+        "error": error,
+        "rows": rows,
+        "analyst_signals": analyst_signals,
+    }
 
 
 def _available_strategies(active_name: str) -> list[dict]:
@@ -181,6 +279,9 @@ def _login_page(error: str = "") -> HTMLResponse:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <title>trader · login</title>
 <style>
   * {{ box-sizing: border-box; }}
@@ -204,7 +305,7 @@ def _login_page(error: str = "") -> HTMLResponse:
     <h1>trader dashboard</h1>
     {error_html}
     <label for="username">Username</label>
-    <input id="username" name="username" autocomplete="off" autocapitalize="none" required>
+    <input id="username" name="username" value="trader" autocomplete="off" autocapitalize="none" required>
     <label for="password">Password</label>
     <input id="password" name="password" type="password" autocomplete="off" required>
     <button type="submit">Sign in</button>
@@ -253,7 +354,11 @@ def create_app(cfg: Config) -> FastAPI:
     @app.middleware("http")
     async def _auth_and_no_cache(request: Request, call_next):
         path = request.url.path
-        if path not in {"/login", "/logout", "/healthz"} and not _authenticated(request):
+        public_paths = {
+            "/login", "/logout", "/healthz", "/favicon.svg",
+            "/apple-touch-icon.png", "/manifest.webmanifest",
+        }
+        if path not in public_paths and not _authenticated(request):
             return RedirectResponse(url="/login", status_code=303)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -300,6 +405,35 @@ def create_app(cfg: Config) -> FastAPI:
         response = RedirectResponse(url="/login", status_code=303)
         response.delete_cookie("trader_session")
         return response
+
+    @app.get("/favicon.svg")
+    def favicon():
+        return HTMLResponse(
+            """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+<rect width="180" height="180" rx="36" fill="#0d1117"/>
+<rect x="10" y="10" width="160" height="160" rx="30" fill="#161b22" stroke="#58a6ff" stroke-width="8"/>
+<text x="90" y="108" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="64" font-weight="800" fill="#e6edf3">CC</text>
+</svg>""",
+            media_type="image/svg+xml",
+        )
+
+    @app.get("/apple-touch-icon.png")
+    def apple_touch_icon():
+        return Response(_APPLE_TOUCH_ICON_PNG, media_type="image/png")
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        return JSONResponse({
+            "name": "CC Trader",
+            "short_name": "CC",
+            "display": "standalone",
+            "background_color": "#0e1116",
+            "theme_color": "#0e1116",
+            "icons": [
+                {"src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png"},
+                {"src": "/favicon.svg", "sizes": "180x180", "type": "image/svg+xml"},
+            ],
+        })
 
     @app.get("/", response_class=HTMLResponse)
     def strategy_view(request: Request):
@@ -545,5 +679,17 @@ def create_app(cfg: Config) -> FastAPI:
     @app.get("/healthz")
     def healthz():
         return {"ok": True}
+
+    @app.get("/advisors", response_class=HTMLResponse)
+    def advisors_view(request: Request):
+        kill_engaged = Path(cfg.risk.kill_switch_path).exists()
+        return templates.TemplateResponse(request, "advisors.html", {
+            "active_tab": "advisors",
+            "cfg": cfg,
+            "advisor": _advisor_state(cfg),
+            "kill_engaged": kill_engaged,
+            "read_only": read_only,
+            "mode": "LIVE" if cfg.alpaca.live else "PAPER",
+        })
 
     return app
