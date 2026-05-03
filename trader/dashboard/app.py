@@ -17,12 +17,12 @@ import os
 import json
 import secrets
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import parse_qs
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
 from ..config import Config
@@ -91,37 +91,74 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return val.lower() in {"1", "true", "yes", "on"}
 
 
+def _login_page(error: str = "") -> HTMLResponse:
+    error_html = (
+        f"<div class='error'>{error}</div>"
+        if error
+        else ""
+    )
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trader · login</title>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{ margin: 0; min-height: 100vh; display: grid; place-items: center;
+         background: #0e1116; color: #e6edf3;
+         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
+  form {{ width: min(360px, calc(100vw - 32px)); background: #161b22;
+          border: 1px solid #30363d; border-radius: 8px; padding: 20px; }}
+  h1 {{ margin: 0 0 16px; font-size: 1.25rem; }}
+  label {{ display: block; margin: 12px 0 6px; color: #8b949e; font-size: 0.9rem; }}
+  input {{ width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #30363d;
+           background: #0d1117; color: #e6edf3; font-size: 1rem; }}
+  button {{ width: 100%; margin-top: 16px; padding: 12px; border: 0; border-radius: 6px;
+            background: #58a6ff; color: #0d1117; font-size: 1rem; font-weight: 700; }}
+  .error {{ background: #f8514933; color: #ffb3ad; border: 1px solid #f8514966;
+            border-radius: 6px; padding: 10px; margin-bottom: 12px; }}
+</style>
+</head>
+<body>
+  <form method="post" action="/login" autocomplete="off">
+    <h1>trader dashboard</h1>
+    {error_html}
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="off" autocapitalize="none" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="off" required>
+    <button type="submit">Sign in</button>
+  </form>
+</body>
+</html>""", headers={"Cache-Control": "no-store"})
+
+
 def create_app(cfg: Config) -> FastAPI:
-    security = HTTPBasic(auto_error=False)
     dashboard_user = os.environ.get("DASHBOARD_USERNAME", "trader")
     dashboard_password = os.environ.get("DASHBOARD_PASSWORD")
     require_auth = _env_bool("DASHBOARD_REQUIRE_AUTH", bool(dashboard_password))
     read_only = _env_bool("DASHBOARD_READ_ONLY", True)
+    session_seconds = int(os.environ.get("DASHBOARD_SESSION_SECONDS", "300"))
+    sessions: dict[str, datetime] = {}
 
-    def _auth(credentials: HTTPBasicCredentials | None = Depends(security)) -> None:
+    def _authenticated(request: Request) -> bool:
         if not require_auth:
-            return
+            return True
         if not dashboard_password:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Dashboard auth is required but DASHBOARD_PASSWORD is not set.",
-            )
-        if credentials is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required",
-                headers={"WWW-Authenticate": "Basic"},
-            )
-        user_ok = secrets.compare_digest(credentials.username, dashboard_user)
-        password_ok = secrets.compare_digest(credentials.password, dashboard_password)
-        if not (user_ok and password_ok):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials",
-                headers={"WWW-Authenticate": "Basic"},
-            )
+            return False
+        token = request.cookies.get("trader_session")
+        if not token:
+            return False
+        now = datetime.now(timezone.utc)
+        last_seen = sessions.get(token)
+        if last_seen is None or now - last_seen > timedelta(seconds=session_seconds):
+            sessions.pop(token, None)
+            return False
+        sessions[token] = now
+        return True
 
-    app = FastAPI(title="trader dashboard", dependencies=[Depends(_auth)])
+    app = FastAPI(title="trader dashboard")
 
     # Templates live next to this file.
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -133,6 +170,57 @@ def create_app(cfg: Config) -> FastAPI:
             return ExecutionClient(cfg.alpaca, Storage(cfg.db_path))
         except Exception:
             return None
+
+    @app.middleware("http")
+    async def _auth_and_no_cache(request: Request, call_next):
+        path = request.url.path
+        if path not in {"/login", "/logout", "/healthz"} and not _authenticated(request):
+            return RedirectResponse(url="/login", status_code=303)
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login_view():
+        return _login_page()
+
+    @app.post("/login")
+    async def login_submit(request: Request):
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+        username = form.get("username", [""])[0]
+        password = form.get("password", [""])[0]
+        user_ok = secrets.compare_digest(username, dashboard_user)
+        password_ok = bool(dashboard_password) and secrets.compare_digest(
+            password, dashboard_password
+        )
+        if not (user_ok and password_ok):
+            return _login_page("Invalid username or password.")
+        token = secrets.token_urlsafe(32)
+        sessions[token] = datetime.now(timezone.utc)
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(
+            "trader_session",
+            token,
+            max_age=session_seconds,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+        )
+        return response
+
+    @app.get("/logout")
+    def logout(request: Request):
+        token = request.cookies.get("trader_session")
+        if token:
+            sessions.pop(token, None)
+        response = RedirectResponse(url="/login", status_code=303)
+        response.delete_cookie("trader_session")
+        return response
 
     @app.get("/", response_class=HTMLResponse)
     def strategy_view(request: Request):

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>trader · {% block title %}{% endblock %}</title>
 <style>
   * { box-sizing: border-box; }
@@ -41,6 +42,31 @@
   .scroll { max-height: 480px; overflow-y: auto; }
   a.report { color: #58a6ff; text-decoration: none; }
   a.report:hover { text-decoration: underline; }
+  .logout { color: #8b949e; font-size: 0.8rem; margin-left: 10px; text-decoration: none; }
+  .logout:hover { color: #e6edf3; }
+  @media (max-width: 700px) {
+    body { font-size: 16px; }
+    header { padding: 12px; align-items: flex-start; gap: 8px; }
+    header h1 { font-size: 1.05rem; line-height: 1.3; }
+    header > div { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .badge { font-size: 0.75rem; margin-left: 0; }
+    nav { padding: 0 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    nav a { flex: 0 0 auto; padding: 12px 10px; font-size: 0.95rem; }
+    main { padding: 12px; }
+    .card { padding: 14px; margin-bottom: 14px; border-radius: 6px; }
+    .card h2 { font-size: 1.05rem; }
+    .grid { gap: 10px; }
+    .grid-3 { grid-template-columns: 1fr; }
+    .stat { padding: 12px; }
+    .stat .label { font-size: 0.78rem; }
+    .stat .value { font-size: 1.25rem; overflow-wrap: anywhere; }
+    .scroll { max-height: none; overflow-x: auto; }
+    table { display: block; overflow-x: auto; white-space: nowrap; font-size: 0.9rem; }
+    th, td { padding: 10px 8px; }
+    pre, code { overflow-wrap: anywhere; white-space: pre-wrap; }
+    .empty { padding: 14px; font-size: 0.95rem; }
+    .logout { font-size: 0.85rem; margin-left: 0; }
+  }
 </style>
 </head>
 <body>
@@ -49,6 +75,7 @@
   <div>
     <span class="badge {{ mode|lower }}">{{ mode }}</span>
     {% if kill_engaged %}<span class="badge kill">KILL SWITCH ON</span>{% endif %}
+    <a class="logout" href="/logout">Logout</a>
   </div>
 </header>
 <nav>
