@@ -81,7 +81,7 @@
   <h2>Strategy Reference</h2>
   <div class="strategy-tabs">
     {% for strategy in available_strategies %}
-      <a href="/?strategy={{ strategy.name }}"
+      <a href="/strategy?strategy={{ strategy.name }}"
          class="{% if strategy.name == strategy_details.name %}active{% endif %}">
         {{ strategy.name }}{% if strategy.active %} · active{% endif %}
       </a>
@@ -103,35 +103,6 @@
   </div>
   <pre class="logic-block">{{ strategy_details.logic }}</pre>
   <pre class="code-block">{{ strategy_details.params | tojson(indent=2) }}</pre>
-</div>
-
-<div class="card">
-  <h2>Command Line Operations</h2>
-  <div class="grid grid-3">
-    <div class="stat">
-      <div class="label">Stop trader</div>
-      <pre class="code-block">sudo systemctl stop trader</pre>
-    </div>
-    <div class="stat">
-      <div class="label">Start trader</div>
-      <pre class="code-block">sudo systemctl start trader</pre>
-    </div>
-    <div class="stat">
-      <div class="label">Restart after config change</div>
-      <pre class="code-block">sudo systemctl restart trader</pre>
-    </div>
-  </div>
-  <p class="muted" style="font-size:0.88rem; line-height:1.5">
-    Live strategy selection is controlled by <code>/opt/trader/config.yaml</code>.
-    To activate a different strategy, copy or edit the config over SSH, then restart the trader service.
-  </p>
-  <pre class="code-block">cd /opt/trader
-sudo cp config.yypt_tqqq_rsi.yaml config.yaml
-sudo systemctl restart trader
-sudo journalctl -u trader -f</pre>
-  <pre class="code-block">cd /opt/trader
-sudo nano config.yaml
-sudo systemctl restart trader</pre>
 </div>
 
 <div class="card">
