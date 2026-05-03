@@ -3,6 +3,105 @@
 {% block heading %}Risk Controls{% endblock %}
 {% block content %}
 
+{% if not read_only %}
+<div class="card kill-card {{ 'engaged' if kill_engaged else 'armed' }}">
+  <div class="kill-head">
+    <div>
+      <h2 style="margin:0">Kill Switch</h2>
+      <p class="muted" style="margin:6px 0 0; font-size:0.88rem">
+        Hard halt for the trader process. When engaged, the bot stops sending new
+        orders on the next tick and writes a stub file at
+        <code>{{ cfg.risk.kill_switch_path }}</code>.
+      </p>
+    </div>
+    <span class="kill-pill {{ 'on' if kill_engaged else 'off' }}">
+      {{ 'ENGAGED' if kill_engaged else 'ARMED' }}
+    </span>
+  </div>
+
+  {% if kill_engaged %}
+    <div class="kill-status engaged">
+      Trader is halted. Release the kill switch to allow trading again — the next tick
+      will resume normal signal → order flow.
+    </div>
+    <form method="post" action="/risk/kill-switch/release"
+          onsubmit="return confirm('Release the kill switch and re-enable trading?');">
+      <button type="submit" class="btn-release">Release kill switch</button>
+    </form>
+  {% else %}
+    <div class="kill-status armed">
+      Trader is running normally. Engage to halt new orders immediately.
+    </div>
+    <form method="post" action="/risk/kill-switch/engage"
+          onsubmit="return confirm('ENGAGE KILL SWITCH? This will halt all trading on the next tick. You can release it from this page once the issue is resolved.');">
+      <button type="submit" class="btn-engage">Engage kill switch</button>
+    </form>
+  {% endif %}
+</div>
+
+<style>
+  .kill-card {
+    border-left: 3px solid var(--neg);
+    background: color-mix(in srgb, var(--neg) 4%, var(--bg-1));
+  }
+  .kill-card.engaged {
+    border-left-color: var(--neg);
+    background: color-mix(in srgb, var(--neg) 10%, var(--bg-1));
+  }
+  .kill-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap; margin-bottom: 12px;
+  }
+  .kill-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    font: 700 11px/1 var(--font-mono);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  .kill-pill.off {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .kill-pill.on {
+    color: var(--neg);
+    background: color-mix(in srgb, var(--neg) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--neg) 50%, transparent);
+    animation: kill-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes kill-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--neg) 30%, transparent); }
+    50%      { box-shadow: 0 0 0 8px color-mix(in srgb, var(--neg) 0%, transparent); }
+  }
+  .kill-status {
+    margin: 4px 0 14px;
+    font-size: 0.9rem; line-height: 1.5;
+    color: var(--fg-1);
+  }
+  .kill-status.engaged { color: var(--fg-0); font-weight: 500; }
+
+  .btn-engage, .btn-release {
+    min-height: 44px; padding: 10px 18px;
+    font: 600 14px/1 inherit;
+    border-radius: var(--r-md); cursor: pointer;
+    border: 0;
+  }
+  .btn-engage {
+    background: var(--neg); color: #1a0808;
+  }
+  .btn-engage:hover {
+    background: color-mix(in srgb, var(--neg) 88%, white);
+  }
+  .btn-release {
+    background: var(--accent); color: #07140d;
+  }
+  .btn-release:hover {
+    background: color-mix(in srgb, var(--accent) 88%, white);
+  }
+</style>
+{% endif %}
+
 <div class="card">
   <h2>Risk Limits (from config.yaml)</h2>
   <div class="grid grid-3">
