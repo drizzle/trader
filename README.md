@@ -1,8 +1,13 @@
-# trader — V1
+# trader
 
-A minimal personal trading bot. Runs swing strategies on US equities via Alpaca, 24/7 on a cloud VM, with a SQLite log of every signal/order/fill and optional Telegram alerts.
+Personal swing- and crypto-trading bot. Runs strategies on US equities and
+Alpaca-supported crypto pairs (e.g. BTC/USD), 24/7 on a cloud VM, with a
+SQLite log of every signal/order/fill, a FastAPI dashboard, and optional
+Telegram alerts.
 
-> ⚠️ **Defaults to paper.** Live trading requires explicitly setting `ALPACA_LIVE=true` in `.env`. Always validate any new strategy on paper for weeks before flipping the switch.
+> ⚠️ **Defaults to paper.** Live trading requires explicitly setting
+> `ALPACA_LIVE=true` in `.env`. Always validate any new strategy on paper for
+> weeks before flipping the switch.
 
 ---
 
@@ -10,34 +15,194 @@ A minimal personal trading bot. Runs swing strategies on US equities via Alpaca,
 
 ```
 .
-├── ARCHITECTURE.md         # the design rationale + V2/V3 plan
+├── ARCHITECTURE.md         # design rationale + V2/V3 plan
 ├── pyproject.toml          # Python deps
 ├── config.yaml             # strategy + runtime config (no secrets)
 ├── .env.example            # secrets template — copy to .env and fill in
 ├── trader/
 │   ├── __main__.py         # entry: python -m trader <subcommand>
-│   ├── cli.py              # CLI dispatcher: run | backtest | dashboard
+│   ├── cli.py              # subcommand dispatch (run / backtest / dashboard /
+│   │                       #   switch-strategy / kill-switch)
 │   ├── main.py             # live bot: scheduler + tick loop
 │   ├── backtest.py         # backtest engine
 │   ├── reports.py          # standalone HTML report (Plotly charts)
-│   ├── config.py           # config loader (env + yaml → typed pydantic models)
-│   ├── data.py             # Alpaca market-data wrapper
+│   ├── config.py           # config loader (env + yaml → pydantic models)
+│   ├── data.py             # Alpaca market-data wrapper (stocks + crypto)
 │   ├── execution.py        # Alpaca trading wrapper (orders, positions, account)
-│   ├── risk.py             # kill switch, daily-loss limit, position-size caps
+│   ├── risk.py             # kill switch, daily-loss, position caps,
+│   │                       #   buying-power gate (caps qty to fit BP)
 │   ├── storage.py          # SQLite: signals, orders, fills, equity snapshots
 │   ├── alerts.py           # Telegram alerts (optional)
+│   ├── indicators.py       # shared TA primitives (SMA, RSI, ...)
 │   ├── strategy/
 │   │   ├── base.py         # Strategy ABC — produces target allocations
-│   │   └── sma_crossover.py# reference 50/200 SMA strategy on SPY
+│   │   ├── sma_crossover.py    # 50/200 SMA on SPY (reference)
+│   │   ├── btc_sma.py          # 20/50 SMA on BTC/USD (crypto, 24/7)
+│   │   └── yypt_tqqq_rsi.py    # YYPT TQQQ/SHV decision tree (Composer port)
 │   └── dashboard/
-│       ├── app.py          # FastAPI app (read-only)
-│       └── templates/      # Jinja2 templates for the 3 tabs
-├── tests/                  # smoke tests
+│       ├── app.py          # FastAPI app — Trades / Strategy / Risk /
+│       │                   #   Backtests / Advisor / Summary tabs
+│       └── templates/      # Jinja2 templates per tab
+├── tests/
 └── deploy/
     ├── trader.service              # systemd unit for the live bot
     ├── trader-dashboard.service    # systemd unit for the dashboard
+    ├── sudoers.d/trader-restart    # narrow grant: dashboard can restart trader
     ├── setup.sh                    # first-time droplet provisioning
-    └── update.sh                   # pull + restart both services
+    └── update.sh                   # pull + reinstall units + restart services
+```
+
+---
+
+## CLI reference
+
+All commands are exposed as `python -m trader <subcommand>`. On the droplet,
+prefix with the venv path and `sudo -u trader`:
+
+```bash
+sudo -u trader /opt/trader/.venv/bin/python -m trader <subcommand> [opts]
+```
+
+For local dev (with the venv active), just `python -m trader <subcommand>`.
+
+### `run` — start the live bot
+
+The default. Runs the strategy from `config.yaml` on a scheduler until killed.
+Normally invoked by `systemctl start trader`, not by hand.
+
+```bash
+python -m trader run
+```
+
+### `dashboard` — start the FastAPI UI
+
+```bash
+python -m trader dashboard --host 127.0.0.1 --port 8000
+```
+
+On the droplet, `trader-dashboard.service` does this for you. Access via SSH
+tunnel (see "Live dashboard" below).
+
+Optional flags:
+- `--config <path>` — alternate YAML
+- `--strategy <name>` — preview a different strategy without editing config
+
+### `switch-strategy` — change the deployed strategy
+
+Same command the dashboard's Deploy button shells out to.
+
+```bash
+# Full deploy: flatten existing positions + restart the trader service
+python -m trader switch-strategy --name btc_sma --flatten --restart
+
+# Switch without flattening (let new strategy inherit current portfolio)
+python -m trader switch-strategy --name yypt_tqqq_rsi --restart
+
+# Dry run: write new config + flatten, but don't restart yet
+python -m trader switch-strategy --name btc_sma --flatten
+cat config.yaml                       # eyeball it
+sudo systemctl restart trader         # commit when ready
+
+# Switch back to the equity SMA strategy
+python -m trader switch-strategy --name sma_crossover --flatten --restart
+```
+
+What it does, in order:
+
+1. Engages the kill switch (running trader skips ticks during the cut)
+2. (`--flatten`) Closes all open positions via Alpaca, waits ~3s for the
+   broker to register the cancels/closes
+3. Atomically rewrites `config.yaml` with new strategy name, default params,
+   and the universe declared by the strategy class
+4. (`--restart`) Runs `sudo systemctl restart trader`
+5. **Leaves kill switch engaged.** Verify the new strategy looks sane on
+   `/strategy`, then release with `kill-switch release` (below).
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | success |
+| 1 | bad args (unknown strategy name, etc.) |
+| 2 | flatten failed — kill switch left engaged for safety |
+| 3 | config write failed |
+| 4 | systemctl restart failed (usually missing/wrong sudoers entry) |
+
+### `kill-switch` — halt or resume trading
+
+Engaging just writes a flag file (default `data/STOP`). The trader checks for
+it at the top of every tick and skips order placement if present. Positions
+are NOT touched — engaging just stops *new* orders.
+
+```bash
+# Check current state
+python -m trader kill-switch status
+
+# Halt — bot keeps running but won't place orders
+python -m trader kill-switch engage --reason "investigating a weird fill"
+
+# Resume
+python -m trader kill-switch release
+```
+
+`rm /opt/trader/data/STOP` is exactly equivalent to `kill-switch release`.
+
+### `backtest` — historical evaluation
+
+Same `Strategy.compute()` runs in backtest and live, so what you backtest is
+what you trade.
+
+```bash
+# Default config, ~10y of history
+python -m trader backtest
+
+# Specific strategy + date range
+python -m trader backtest --strategy btc_sma --start 2020-01-01 --end 2025-01-01
+
+# Compare with vs. without risk caps
+python -m trader backtest --strategy sma_crossover
+python -m trader backtest --strategy sma_crossover --no-risk
+
+# Custom starting capital, slippage, commission
+python -m trader backtest --strategy yypt_tqqq_rsi --cash 50000 --slippage-bps 10 --commission 0.50
+
+# Specify output file
+python -m trader backtest --strategy btc_sma --output /tmp/btc_backtest.html
+```
+
+Reports land in `data/backtests/<strategy>_<timestamp>.html` and show up on
+the dashboard's Backtests tab.
+
+### List available strategies
+
+There's no dedicated subcommand; one-liner via Python:
+
+```bash
+sudo -u trader /opt/trader/.venv/bin/python -c \
+  "from trader.strategy import STRATEGIES; print('\n'.join(sorted(STRATEGIES)))"
+```
+
+### Suggested droplet aliases
+
+Drop these into root's `~/.bashrc` to save typing:
+
+```bash
+alias trader-cli='cd /opt/trader && sudo -u trader /opt/trader/.venv/bin/python -m trader'
+alias trader-logs='sudo journalctl -u trader -f'
+alias trader-status='sudo systemctl status trader trader-dashboard --no-pager'
+alias trader-update='sudo bash /opt/trader/deploy/update.sh'
+```
+
+Then:
+
+```bash
+trader-cli switch-strategy --name btc_sma --flatten --restart
+trader-cli kill-switch release
+trader-cli kill-switch status
+trader-cli backtest --strategy btc_sma --start 2022-01-01
+trader-logs
+trader-status
+trader-update
 ```
 
 ---
@@ -149,13 +314,14 @@ That's it — pulls latest, reinstalls deps, restarts the service.
 |---|---|
 | Tail live logs | `sudo journalctl -u trader -f` |
 | Last 200 log lines | `sudo journalctl -u trader -n 200` |
-| Stop the service | `sudo systemctl stop trader` |
-| Start the service | `sudo systemctl start trader` |
-| Restart | `sudo systemctl restart trader` |
-| Status | `sudo systemctl status trader` |
-| **Halt trading without stopping the process** | `sudo -u trader touch /opt/trader/data/STOP` |
-| Resume after halt | `sudo rm /opt/trader/data/STOP && sudo systemctl restart trader` |
-| Inspect SQLite | `sqlite3 /opt/trader/data/trader.db '.schema'` then `select * from orders order by id desc limit 10;` |
+| Errors only, last hour | `sudo journalctl -u trader -p err --since "1 hour ago"` |
+| Stop / start / restart service | `sudo systemctl {stop,start,restart} trader` |
+| Status of both services | `sudo systemctl status trader trader-dashboard --no-pager` |
+| **Halt trading without stopping the process** | `trader-cli kill-switch engage` (or `sudo -u trader touch /opt/trader/data/STOP`) |
+| **Resume after halt** | `trader-cli kill-switch release` (or `sudo rm /opt/trader/data/STOP`) |
+| Switch strategy + flatten + restart | `trader-cli switch-strategy --name btc_sma --flatten --restart` |
+| Check what's deployed | `grep -A2 '^strategy:' /opt/trader/config.yaml` |
+| Inspect SQLite | `sqlite3 /opt/trader/data/trader.db 'select * from orders order by id desc limit 10;'` |
 
 ### Going live (paper → real money)
 
@@ -234,16 +400,51 @@ The contract: `compute(bars)` takes a dict of `{symbol: DataFrame}` and returns 
 
 ---
 
-## What this V1 explicitly does NOT do
+## Troubleshooting
 
-- Backtesting. Add a `python -m trader backtest` command in V2 that reuses `Strategy.compute()` against historical bars.
-- A web dashboard. Add FastAPI in V2.
+**"Insufficient buying power" rejections on BUY orders.**
+The risk manager caps order qty to fit available BP with a 0.5% slippage
+buffer. If you still see broker rejections, widen the buffer in
+`risk.py::cap_qty_to_buying_power` — volatile crypto minutes can move >1%
+between bar close and order submission.
+
+**Deploy button (or `switch-strategy`) fails with `[Errno 30] Read-only file system`.**
+The dashboard service's systemd sandbox doesn't include `/opt/trader/config.yaml`
+in `ReadWritePaths`. Run `sudo bash /opt/trader/deploy/update.sh` to install
+the corrected unit, or manually:
+
+```bash
+sudo install -m 644 /opt/trader/deploy/trader-dashboard.service \
+  /etc/systemd/system/trader-dashboard.service
+sudo systemctl daemon-reload && sudo systemctl restart trader-dashboard
+```
+
+**`switch-strategy --restart` exits with `rc=4`.**
+The sudoers grant isn't installed or isn't being picked up. Verify:
+
+```bash
+sudo -u trader sudo -n systemctl is-active trader   # should print "active"
+ls -la /etc/sudoers.d/trader-restart                # must be -r--r-----
+```
+
+If wrong, re-install: `sudo install -m 440 /opt/trader/deploy/sudoers.d/trader-restart /etc/sudoers.d/`
+then `sudo visudo -cf /etc/sudoers.d/trader-restart` to validate.
+
+**Bot keeps generating signals but never trades.**
+Check `trader-cli kill-switch status` — `switch-strategy` leaves it engaged
+on purpose. Release with `trader-cli kill-switch release`.
+
+---
+
+## What this still does NOT do
+
 - Real-time data via websockets. Daily/15-min polling is fine for swing strategies.
 - Options, futures, multi-leg orders.
 - Multi-strategy capital allocation.
-- Anything fancy with risk (no portfolio vol targeting, no correlation-aware sizing, no drawdown management beyond a hard daily cap).
+- Portfolio vol targeting, correlation-aware sizing, or drawdown management
+  beyond the hard daily cap.
 
-These are V2/V3 concerns. See `ARCHITECTURE.md`.
+See `ARCHITECTURE.md` for the V3 design that addresses some of these.
 
 ---
 

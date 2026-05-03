@@ -269,6 +269,50 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_kill_switch(args: argparse.Namespace) -> int:
+    """Engage / release / check the kill switch from the CLI.
+
+    The trader checks for the existence of the kill-switch file at the top of
+    every tick. Engaging = writing the file; releasing = deleting it.
+    """
+    from .config import load_config
+
+    cfg = load_config(args.config)
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
+
+    kill_path = Path(cfg.risk.kill_switch_path)
+
+    if args.action == "status":
+        if kill_path.exists():
+            reason = kill_path.read_text().strip() or "(no reason recorded)"
+            logger.info(f"Kill switch ENGAGED at {kill_path}")
+            logger.info(f"  reason: {reason}")
+        else:
+            logger.info(f"Kill switch RELEASED (no file at {kill_path})")
+        return 0
+
+    if args.action == "engage":
+        kill_path.parent.mkdir(parents=True, exist_ok=True)
+        reason = args.reason or "engaged via CLI"
+        kill_path.write_text(
+            f"{reason} at {datetime.now(timezone.utc).isoformat(timespec='seconds')}"
+        )
+        logger.success(f"Kill switch ENGAGED: {kill_path}")
+        return 0
+
+    if args.action == "release":
+        if kill_path.exists():
+            kill_path.unlink()
+            logger.success(f"Kill switch RELEASED: {kill_path} removed")
+        else:
+            logger.info(f"Kill switch already released (no file at {kill_path})")
+        return 0
+
+    logger.error(f"Unknown action: {args.action}")
+    return 1
+
+
 def _cmd_dashboard(args: argparse.Namespace) -> int:
     import uvicorn
     from .dashboard.app import create_app
@@ -328,6 +372,17 @@ def main(argv: list[str] | None = None) -> int:
     p_switch.add_argument("--restart", action="store_true",
                           help="Run sudo systemctl restart trader after writing config.")
     p_switch.set_defaults(func=_cmd_switch_strategy)
+
+    p_ks = sub.add_parser(
+        "kill-switch",
+        help="Engage / release / status of the trader kill switch.",
+    )
+    p_ks.add_argument("--config", default="config.yaml")
+    p_ks.add_argument("action", choices=["engage", "release", "status"],
+                      help="engage = halt new orders; release = resume; status = check")
+    p_ks.add_argument("--reason", default=None,
+                      help="Free-text reason recorded in the flag file (engage only).")
+    p_ks.set_defaults(func=_cmd_kill_switch)
 
     p_dash = sub.add_parser("dashboard", help="Start the FastAPI dashboard.")
     p_dash.add_argument("--config", default="config.yaml")
