@@ -110,6 +110,30 @@
   </div>
 </div>
 
+<div class="card equity-card allocation-card">
+  <div class="equity-head">
+    <div class="equity-meta">
+      <div class="equity-label">Allocation</div>
+      <div class="allocation-title">
+        Cash <span>vs</span> {{ allocation_asset_label }}
+      </div>
+      <div class="allocation-sub" id="allocationSub">—</div>
+    </div>
+    <div class="allocation-legend">
+      <span><i class="cash"></i>Cash</span>
+      <span><i class="asset"></i>{{ allocation_asset_label }}</span>
+      <span><i class="trade"></i>Trades</span>
+    </div>
+  </div>
+  <div class="equity-chart-wrap allocation-chart-wrap">
+    <canvas id="allocationChart"></canvas>
+    <div class="equity-tooltip" id="allocationTooltip" hidden>
+      <div class="t-price"></div>
+      <div class="t-time"></div>
+    </div>
+  </div>
+</div>
+
 <style>
   .equity-card { padding: 22px 22px 18px; }
   .equity-head {
@@ -175,6 +199,51 @@
   #equityChart {
     display: block; width: 100%; height: 100%;
   }
+  #allocationChart {
+    display: block; width: 100%; height: 100%;
+  }
+  .allocation-title {
+    color: var(--fg-0);
+    font: 700 22px/1.15 var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    margin-top: 5px;
+  }
+  .allocation-title span {
+    color: var(--fg-2);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .allocation-sub {
+    color: var(--fg-2);
+    font: 500 12px/1.3 var(--font-mono);
+    margin-top: 8px;
+  }
+  .allocation-legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    color: var(--fg-2);
+    font: 600 12px/1 var(--font-mono);
+  }
+  .allocation-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .allocation-legend i {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+  .allocation-legend .cash { background: #22d3ee; }
+  .allocation-legend .asset { background: var(--accent); }
+  .allocation-legend .trade {
+    background: var(--neg);
+    border-radius: 999px;
+  }
+  .allocation-chart-wrap { height: 210px; }
   .equity-tooltip {
     position: absolute; top: 0; left: 0;
     transform: translate(-50%, -100%);
@@ -263,6 +332,8 @@
   'use strict';
 
   var raw = {{ equity_curve_json | safe }} || [];
+  var rawOrders = {{ chart_orders_json | safe }} || [];
+  var allocationLabel = {{ allocation_asset_label | tojson }};
   // Normalize: each row { ts_utc, equity } → { t: ms, v: number }
   var ALL = raw
     .map(function (d) {
@@ -272,12 +343,48 @@
     })
     .filter(Boolean)
     .sort(function (a, b) { return a.t - b.t; });
+  var ALLOC = raw
+    .map(function (d) {
+      var t = Date.parse(d.ts_utc);
+      var equity = Number(d.equity);
+      var cash = Number(d.cash);
+      if (!isFinite(t) || !isFinite(equity) || !isFinite(cash) || equity <= 0) return null;
+      cash = clamp(cash, 0, equity);
+      var asset = Math.max(0, equity - cash);
+      return {
+        t: t,
+        equity: equity,
+        cash: cash,
+        asset: asset,
+        cashPct: cash / equity,
+        assetPct: asset / equity,
+      };
+    })
+    .filter(Boolean)
+    .sort(function (a, b) { return a.t - b.t; });
+  var ORDERS = rawOrders
+    .map(function (d) {
+      var t = Date.parse(d.ts_utc);
+      if (!isFinite(t)) return null;
+      return {
+        t: t,
+        side: String(d.side || '').toLowerCase(),
+        status: String(d.status || '').toLowerCase(),
+        symbol: d.symbol || '',
+        qty: Number(d.filled_qty || d.qty || 0),
+      };
+    })
+    .filter(function (d) { return d && (d.side === 'buy' || d.side === 'sell'); })
+    .sort(function (a, b) { return a.t - b.t; });
 
   var canvas    = document.getElementById('equityChart');
+  var allocCanvas = document.getElementById('allocationChart');
   var priceEl   = document.getElementById('equityPrice');
   var deltaEl   = document.getElementById('equityDelta');
   var rangeMeta = document.getElementById('equityRange');
   var tooltip   = document.getElementById('equityTooltip');
+  var allocTooltip = document.getElementById('allocationTooltip');
+  var allocationSub = document.getElementById('allocationSub');
   var ranges    = document.getElementById('equityRanges');
 
   if (!ALL.length) {
@@ -285,6 +392,11 @@
     canvas.replaceWith(Object.assign(document.createElement('div'), {
       className: 'empty', textContent: 'Not enough equity snapshots yet.'
     }));
+    if (allocCanvas) {
+      allocCanvas.replaceWith(Object.assign(document.createElement('div'), {
+        className: 'empty', textContent: 'Not enough account snapshots yet.'
+      }));
+    }
     if (priceEl) priceEl.textContent = '$—';
     return;
   }
@@ -358,6 +470,7 @@
     })[key];
     updateHeader(view[view.length - 1].v);
     draw();
+    drawAllocation();
   }
 
   function updateHeader(currentValue) {
@@ -375,9 +488,10 @@
 
   // --- drawing ---
   var dpr = Math.max(1, window.devicePixelRatio || 1);
-  var W = 0, H = 0;
+  var W = 0, H = 0, AW = 0, AH = 0;
   var pad = { l: 8, r: 8, t: 14, b: 14 };
   var hover = null; // { x, y, idx }
+  var allocHover = null; // { idx }
 
   function resize() {
     var rect = canvas.getBoundingClientRect();
@@ -389,6 +503,17 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  function resizeAllocation() {
+    if (!allocCanvas) return;
+    var rect = allocCanvas.getBoundingClientRect();
+    AW = Math.max(1, Math.floor(rect.width));
+    AH = Math.max(1, Math.floor(rect.height));
+    allocCanvas.width = AW * dpr;
+    allocCanvas.height = AH * dpr;
+    var ctx = allocCanvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
   function getColors() {
     var s = getComputedStyle(document.documentElement);
     return {
@@ -397,6 +522,7 @@
       grid:   (s.getPropertyValue('--border-1') || '#1a2a22').trim(),
       muted:  (s.getPropertyValue('--fg-2')   || '#6f8479').trim(),
       bg:     (s.getPropertyValue('--bg-1')   || '#0f1c17').trim(),
+      cash:   '#22d3ee',
     };
   }
 
@@ -423,21 +549,23 @@
     };
   }
 
-  function smoothPath(ctx, pts) {
+  // Catmull–Rom → Bezier curve drawing.
+  // `startWithMove`: if true, start with moveTo(pts[0]); if false, assume the
+  // path has already been moved/lined to pts[0] (used by the fill version).
+  function smoothPath(ctx, pts, startWithMove) {
     if (!pts.length) return;
-    ctx.moveTo(pts[0].x, pts[0].y);
+    if (startWithMove !== false) ctx.moveTo(pts[0].x, pts[0].y);
     if (pts.length === 1) return;
     if (pts.length === 2) { ctx.lineTo(pts[1].x, pts[1].y); return; }
-    // Catmull–Rom → Bezier, mild smoothing for the Robinhood feel.
     for (var i = 0; i < pts.length - 1; i++) {
       var p0 = pts[i - 1] || pts[i];
       var p1 = pts[i];
       var p2 = pts[i + 1];
       var p3 = pts[i + 2] || p2;
       var t = 0.18; // tension; smaller = looser smoothing
-      var c1x = p1.x + (p2.x - p0.x) * t;
+      var c1x = clamp(p1.x + (p2.x - p0.x) * t, p1.x, p2.x);
       var c1y = p1.y + (p2.y - p0.y) * t;
-      var c2x = p2.x - (p3.x - p1.x) * t;
+      var c2x = clamp(p2.x - (p3.x - p1.x) * t, p1.x, p2.x);
       var c2y = p2.y - (p3.y - p1.y) * t;
       ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2.x, p2.y);
     }
@@ -477,7 +605,8 @@
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.moveTo(pts[0].x, H - pad.b);
-    smoothPath(ctx, pts);
+    ctx.lineTo(pts[0].x, pts[0].y);
+    smoothPath(ctx, pts, false);
     ctx.lineTo(pts[pts.length - 1].x, H - pad.b);
     ctx.closePath();
     ctx.fill();
@@ -523,6 +652,127 @@
     }
   }
 
+  function allocationView() {
+    if (!ALLOC.length) return [];
+    if (!isFinite(RANGE_MS[currentRange])) return ALLOC.slice();
+    var cutoff = ALLOC[ALLOC.length - 1].t - RANGE_MS[currentRange];
+    var filtered = ALLOC.filter(function (p) { return p.t >= cutoff; });
+    return filtered.length >= 2 ? filtered : ALLOC.slice(-Math.max(2, filtered.length));
+  }
+
+  function drawAllocation() {
+    if (!allocCanvas) return;
+    resizeAllocation();
+    var ctx = allocCanvas.getContext('2d');
+    var colors = getColors();
+    ctx.clearRect(0, 0, AW, AH);
+
+    var rows = allocationView();
+    if (!rows.length) {
+      allocationSub.textContent = 'Not enough account snapshots yet.';
+      return;
+    }
+
+    var minT = rows[0].t;
+    var maxT = rows[rows.length - 1].t;
+    var spanT = (maxT - minT) || 1;
+    var w = AW - pad.l - pad.r;
+    var h = AH - pad.t - pad.b;
+    var x = function (t) { return pad.l + ((t - minT) / spanT) * w; };
+    var y = function (pct) { return pad.t + (1 - pct) * h; };
+    var bottom = AH - pad.b;
+
+    var ptsAsset = rows.map(function (d) { return { x: x(d.t), y: y(d.assetPct) }; });
+
+    ctx.save();
+    ctx.strokeStyle = colors.grid;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 4]);
+    [0.25, 0.5, 0.75].forEach(function (pct) {
+      var gy = y(pct);
+      ctx.beginPath();
+      ctx.moveTo(pad.l, gy);
+      ctx.lineTo(AW - pad.r, gy);
+      ctx.stroke();
+    });
+    ctx.restore();
+
+    var cashGrad = ctx.createLinearGradient(0, pad.t, 0, bottom);
+    cashGrad.addColorStop(0, hexWithAlpha(colors.cash, 0.14));
+    cashGrad.addColorStop(1, hexWithAlpha(colors.cash, 0.38));
+    ctx.fillStyle = cashGrad;
+    ctx.fillRect(pad.l, pad.t, AW - pad.l - pad.r, bottom - pad.t);
+
+    var assetGrad = ctx.createLinearGradient(0, pad.t, 0, bottom);
+    assetGrad.addColorStop(0, hexWithAlpha(colors.up, 0.50));
+    assetGrad.addColorStop(1, hexWithAlpha(colors.up, 0.12));
+    ctx.fillStyle = assetGrad;
+    ctx.beginPath();
+    ctx.moveTo(ptsAsset[0].x, bottom);
+    ctx.lineTo(ptsAsset[0].x, ptsAsset[0].y);
+    smoothPath(ctx, ptsAsset, false);
+    ctx.lineTo(ptsAsset[ptsAsset.length - 1].x, bottom);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = colors.up;
+    ctx.lineWidth = 1.8;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    smoothPath(ctx, ptsAsset);
+    ctx.stroke();
+
+    var visibleOrders = ORDERS.filter(function (o) { return o.t >= minT && o.t <= maxT; });
+    visibleOrders.forEach(function (o) {
+      var ox = x(o.t);
+      var buy = o.side === 'buy';
+      ctx.fillStyle = buy ? colors.up : colors.down;
+      ctx.strokeStyle = colors.bg;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(ox, buy ? pad.t + 8 : bottom - 8, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+
+    var last = rows[rows.length - 1];
+    allocationSub.textContent =
+      Math.round(last.cashPct * 100) + '% cash / ' +
+      Math.round(last.assetPct * 100) + '% ' + allocationLabel + ' now';
+
+    if (allocHover && allocHover.idx != null) {
+      var hp = ptsAsset[allocHover.idx];
+      var hv = rows[allocHover.idx];
+      ctx.save();
+      ctx.strokeStyle = colors.muted;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(hp.x, pad.t);
+      ctx.lineTo(hp.x, bottom);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = colors.bg;
+      ctx.strokeStyle = colors.up;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(hp.x, hp.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      allocTooltip.hidden = false;
+      allocTooltip.querySelector('.t-price').textContent =
+        Math.round(hv.cashPct * 100) + '% cash / ' +
+        Math.round(hv.assetPct * 100) + '% ' + allocationLabel;
+      allocTooltip.querySelector('.t-time').textContent = fmtTimeShort(hv.t, spanT);
+      allocTooltip.style.left = clamp(hp.x, 70, AW - 70) + 'px';
+      allocTooltip.style.top = Math.max(28, hp.y - 12) + 'px';
+    } else {
+      allocTooltip.hidden = true;
+    }
+  }
+
   function clamp(n, lo, hi) { return n < lo ? lo : (n > hi ? hi : n); }
   function hexWithAlpha(hex, a) {
     // Accept #rgb / #rrggbb / rgb(...). Fallback: use color-mix at runtime via canvas.
@@ -562,16 +812,48 @@
     updateHeader(view[idx].v);
     draw();
   }
+  function onAllocationPointer(e) {
+    var rows = allocationView();
+    if (!rows.length) return;
+    var rect = allocCanvas.getBoundingClientRect();
+    var x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    var minT = rows[0].t;
+    var maxT = rows[rows.length - 1].t;
+    var spanT = (maxT - minT) || 1;
+    var w = AW - pad.l - pad.r;
+    var ratio = clamp((x - pad.l) / w, 0, 1);
+    var targetT = minT + ratio * spanT;
+    var lo = 0, hi = rows.length - 1;
+    while (lo < hi) {
+      var mid = (lo + hi) >> 1;
+      if (rows[mid].t < targetT) lo = mid + 1; else hi = mid;
+    }
+    var idx = lo;
+    if (idx > 0 && Math.abs(rows[idx-1].t - targetT) < Math.abs(rows[idx].t - targetT)) idx -= 1;
+    allocHover = { idx: idx };
+    drawAllocation();
+  }
   function onLeave() {
     hover = null;
     updateHeader(view[view.length - 1].v);
     draw();
+  }
+  function onAllocationLeave() {
+    allocHover = null;
+    drawAllocation();
   }
   canvas.addEventListener('mousemove', onPointer);
   canvas.addEventListener('mouseleave', onLeave);
   canvas.addEventListener('touchstart', onPointer, { passive: true });
   canvas.addEventListener('touchmove',  onPointer, { passive: true });
   canvas.addEventListener('touchend',   onLeave);
+  if (allocCanvas) {
+    allocCanvas.addEventListener('mousemove', onAllocationPointer);
+    allocCanvas.addEventListener('mouseleave', onAllocationLeave);
+    allocCanvas.addEventListener('touchstart', onAllocationPointer, { passive: true });
+    allocCanvas.addEventListener('touchmove',  onAllocationPointer, { passive: true });
+    allocCanvas.addEventListener('touchend',   onAllocationLeave);
+  }
 
   // Range buttons
   ranges.addEventListener('click', function (e) {
@@ -585,7 +867,10 @@
   var resizeRaf = null;
   window.addEventListener('resize', function () {
     if (resizeRaf) cancelAnimationFrame(resizeRaf);
-    resizeRaf = requestAnimationFrame(draw);
+    resizeRaf = requestAnimationFrame(function () {
+      draw();
+      drawAllocation();
+    });
   });
 })();
 </script>

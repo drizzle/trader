@@ -760,6 +760,7 @@ def create_app(cfg: Config) -> FastAPI:
     def trades_view(request: Request):
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
         orders = _read_orders(cfg.db_path, limit=50)
+        chart_orders = _read_orders(cfg.db_path, limit=500)
         equity_curve = _read_equity_curve(cfg.db_path)
 
         ec = _execution()
@@ -809,6 +810,13 @@ def create_app(cfg: Config) -> FastAPI:
                 "last_ts": equity_curve[-1]["ts_utc"],
             }
 
+        if len(cfg.universe) == 1:
+            allocation_asset_label = cfg.universe[0]
+        elif len(positions) == 1:
+            allocation_asset_label = positions[0]["symbol"]
+        else:
+            allocation_asset_label = "Positions"
+
         # Latest equity-snapshot timestamp + page render time, so the user
         # can see how stale the data is and roughly when the next tick lands.
         latest_equity_ts = equity_curve[-1]["ts_utc"] if equity_curve else None
@@ -820,6 +828,8 @@ def create_app(cfg: Config) -> FastAPI:
             "account": account_data,
             "orders": orders,
             "equity_curve_json": json.dumps(equity_curve, default=str),
+            "chart_orders_json": json.dumps(chart_orders, default=str),
+            "allocation_asset_label": allocation_asset_label,
             "pnl": pnl,
             "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
