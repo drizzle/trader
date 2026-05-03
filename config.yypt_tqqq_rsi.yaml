@@ -1,0 +1,39 @@
+# Example config for the YYPT TQQQ RSI strategy.
+#
+# To use this strategy live:
+#     cp config.yypt_tqqq_rsi.yaml config.yaml   (overwrites the SMA config)
+#     sudo systemctl restart trader
+#
+# To backtest WITHOUT changing live config:
+#     python -m trader backtest --strategy yypt_tqqq_rsi --start 2018-01-01
+
+universe:
+  - TQQQ
+  - SHV
+
+strategy:
+  name: yypt_tqqq_rsi
+  params:
+    risk_symbol:        TQQQ
+    defensive_symbol:   SHV
+    rsi_period:         10
+    rsi_low:            30.0
+    rsi_high:           80.0
+    sma_long_window:    200
+    sma_short_window:   20
+    target_allocation:  0.95
+
+schedule:
+  interval_minutes: 15
+
+# IMPORTANT — TIGHTER CAPS for a leveraged-ETF strategy:
+# TQQQ moves 3x QQQ daily. The default 100% position cap is dangerous.
+# These reduce single-day exposure to manageable levels.
+risk:
+  max_position_pct:       0.50    # never more than 50% in a single name
+  daily_loss_limit_pct:   0.04    # halt + flatten if daily loss > 4%
+  min_cash_buffer_pct:    0.05    # always keep 5%+ in cash
+  kill_switch_path:       ./data/STOP
+
+storage:
+  db_filename: trader.db
