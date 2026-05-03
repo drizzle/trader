@@ -210,10 +210,17 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
         f"# Active strategy: {name}\n\n"
     )
     body = yaml.safe_dump(raw, sort_keys=False, default_flow_style=False)
-    tmp_path = config_path.with_suffix(config_path.suffix + ".tmp")
+
+    # NOTE: We deliberately write directly to config.yaml instead of the
+    # usual tmp-file + atomic-rename pattern. The dashboard service runs with
+    # systemd's ProtectSystem=strict, which makes /opt/trader/ read-only
+    # except for paths listed in ReadWritePaths. Granting write to the
+    # specific file /opt/trader/config.yaml does NOT grant write to its
+    # parent directory, so creating a sibling .tmp file fails with EROFS.
+    # Direct write has a tiny corruption window (milliseconds for a ~2KB
+    # YAML); recovery is `git checkout config.yaml` if it ever happens.
     try:
-        tmp_path.write_text(header + body)
-        tmp_path.replace(config_path)  # atomic on POSIX
+        config_path.write_text(header + body)
     except Exception as e:
         logger.error(f"[3/4] Could not write new config: {e}")
         return 3
