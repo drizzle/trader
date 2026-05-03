@@ -3,6 +3,42 @@
 {% block heading %}Trades & P&amp;L{% endblock %}
 {% block content %}
 
+<div style="display:flex; justify-content:space-between; align-items:center;
+            gap:12px; flex-wrap:wrap; padding:8px 12px; margin-bottom:14px;
+            background:var(--bg-2); border:1px solid var(--border-1);
+            border-radius:var(--r-md); font-size:11px; color:var(--fg-2);
+            font-family:var(--font-mono);">
+  <div>
+    Page loaded <span style="color:var(--fg-1)">{{ page_generated_at }}</span>
+    {% if latest_equity_ts %}
+      · last equity tick <span style="color:var(--fg-1)">{{ latest_equity_ts[:19] }} UTC</span>
+    {% endif %}
+    · trader runs every {{ tick_interval_minutes }} min
+  </div>
+  <div>
+    Auto-refreshes in <span id="refresh-countdown">60</span>s ·
+    <a href="javascript:location.reload()"
+       style="color:var(--accent); text-decoration:none">reload now</a>
+  </div>
+</div>
+
+<script>
+  // Auto-refresh every 60s so the page stays in sync with the trader's tick
+  // cadence. Resets on user interaction so it doesn't fight a focused user.
+  (function () {
+    let secondsLeft = 60;
+    const span = document.getElementById('refresh-countdown');
+    const tick = setInterval(function () {
+      secondsLeft -= 1;
+      if (span) span.textContent = secondsLeft;
+      if (secondsLeft <= 0) {
+        clearInterval(tick);
+        location.reload();
+      }
+    }, 1000);
+  })();
+</script>
+
 <div class="card">
   <h2>Account ({{ mode }})</h2>
   {% if account.error %}

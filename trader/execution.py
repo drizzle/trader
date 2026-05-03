@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.enums import OrderSide, QueryOrderStatus, TimeInForce
 from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest
 from loguru import logger
 
@@ -61,6 +61,25 @@ class ExecutionClient:
 
     def is_market_open(self) -> bool:
         return bool(self._client.get_clock().is_open)
+
+    def open_orders_for(self, symbol: str) -> list:
+        """Return open (not-yet-filled / not-yet-cancelled) orders for symbol.
+
+        Used by the tick loop to skip submitting a new order when a previous
+        one for the same symbol is still pending at the broker. Without this
+        check, every tick that sees `current_qty != target_qty` will fire a
+        new order, and Alpaca holds the pending order's notional against your
+        buying power — so the second order fails BP at the broker even when
+        our local BP cap thought there was room.
+        """
+        try:
+            req = GetOrdersRequest(status=QueryOrderStatus.OPEN, limit=100)
+            orders = self._client.get_orders(filter=req)
+        except Exception as e:
+            logger.warning(f"Could not fetch open orders for {symbol}: {e}")
+            return []
+        # Alpaca crypto orders use the slash form ("BTC/USD"); equity uses "AAPL".
+        return [o for o in orders if o.symbol == symbol]
 
     # --- writes ---
 

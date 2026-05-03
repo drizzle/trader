@@ -739,6 +739,9 @@ def create_app(cfg: Config) -> FastAPI:
                 "last_ts": equity_curve[-1]["ts_utc"],
             }
 
+        # Latest equity-snapshot timestamp + page render time, so the user
+        # can see how stale the data is and roughly when the next tick lands.
+        latest_equity_ts = equity_curve[-1]["ts_utc"] if equity_curve else None
         return templates.TemplateResponse(request, "trades.html", {
             "active_tab": "trades",
             "cfg": cfg,
@@ -750,6 +753,9 @@ def create_app(cfg: Config) -> FastAPI:
             "pnl": pnl,
             "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
+            "page_generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "latest_equity_ts": latest_equity_ts,
+            "tick_interval_minutes": cfg.schedule.interval_minutes,
         })
 
     @app.get("/risk", response_class=HTMLResponse)
@@ -989,7 +995,9 @@ def create_app(cfg: Config) -> FastAPI:
 
         try:
             data_client = DataClient(cfg.alpaca)
-            bars = data_client.daily_bars(cfg.universe, lookback_days=400)
+            # Use the mixed-universe fetcher so BTC/USD and similar crypto
+            # symbols hit the crypto endpoint instead of returning empty.
+            bars = data_client.bars_for_universe(cfg.universe, lookback_days=400)
         except Exception as e:
             return RedirectResponse(f"/advisors?err=Alpaca+data+error:+{e}", 303)
 
@@ -1128,7 +1136,9 @@ def create_app(cfg: Config) -> FastAPI:
                 symbols = list(cfg.universe)
             try:
                 data_client = DataClient(cfg.alpaca)
-                bars = data_client.daily_bars(symbols, lookback_days=300)
+                # Mixed-universe fetcher routes BTC/USD-style symbols through
+                # the crypto endpoint; equity tickers stay on IEX.
+                bars = data_client.bars_for_universe(symbols, lookback_days=300)
                 contexts = [build_context(sym, df) for sym, df in bars.items() if not df.empty]
             except Exception:
                 # Continue without grounding — LLM will note the limitation.

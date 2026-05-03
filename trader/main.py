@@ -143,13 +143,29 @@ def tick(
         side = OrderSide.BUY if diff > 0 else OrderSide.SELL
         order_qty = abs(diff)
 
+        # Idempotency: if there's already an open order for this symbol at
+        # the broker, skip. Without this check we re-submit every tick (since
+        # current_qty stays at zero until fills land), and Alpaca holds each
+        # pending order's notional against BP — so duplicates get rejected.
+        pending = execution.open_orders_for(s.symbol)
+        if pending:
+            logger.info(
+                f"{s.symbol}: skipping — {len(pending)} order(s) still pending "
+                f"at broker (ids: {[o.client_order_id for o in pending]})"
+            )
+            continue
+
         # Buying-power gate — only meaningful for BUYs. SELLs reduce exposure
         # and don't consume cash. Caps qty (or skips) so we don't get rejected
         # by Alpaca for "insufficient buying power".
         if side == OrderSide.BUY:
+            # Crypto needs a wider slippage buffer than equities — BTC/ETH can
+            # move 1-2% in 15 minutes between bar close and order submission.
+            slippage_buffer = 0.02 if strategy.is_crypto else 0.005
             capped_qty, cap_msg = risk.cap_qty_to_buying_power(
                 order_qty, price, account.buying_power,
                 is_crypto=strategy.is_crypto,
+                slippage_buffer_pct=slippage_buffer,
             )
             if capped_qty <= 0:
                 logger.warning(f"{s.symbol}: {cap_msg}")

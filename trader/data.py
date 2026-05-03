@@ -64,6 +64,37 @@ class DataClient:
                 logger.warning(f"No bars for {sym}")
         return out
 
+    def bars_for_universe(
+        self, symbols: list[str], lookback_days: int = 365
+    ) -> dict[str, pd.DataFrame]:
+        """Fetch daily bars for a mixed universe of stocks + crypto.
+
+        Routing rule: a "/" in the symbol means crypto (e.g. BTC/USD, ETH/USD)
+        and goes through the crypto endpoint; everything else hits the equity
+        endpoint. Used by the dashboard's advisor + summary tabs which can
+        receive any mix of tickers from the configured universe or a user
+        text input.
+        """
+        crypto_syms = [s for s in symbols if "/" in s]
+        stock_syms = [s for s in symbols if "/" not in s]
+
+        out: dict[str, pd.DataFrame] = {}
+        if stock_syms:
+            try:
+                out.update(self.daily_bars(stock_syms, lookback_days))
+            except Exception as e:
+                logger.warning(f"daily_bars failed for {stock_syms}: {e}")
+                for s in stock_syms:
+                    out.setdefault(s, pd.DataFrame())
+        if crypto_syms:
+            try:
+                out.update(self.crypto_daily_bars(crypto_syms, lookback_days))
+            except Exception as e:
+                logger.warning(f"crypto_daily_bars failed for {crypto_syms}: {e}")
+                for s in crypto_syms:
+                    out.setdefault(s, pd.DataFrame())
+        return out
+
     def crypto_daily_bars(
         self, symbols: list[str], lookback_days: int = 365
     ) -> dict[str, pd.DataFrame]:
