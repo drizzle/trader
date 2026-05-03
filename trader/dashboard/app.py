@@ -34,7 +34,20 @@ from ..execution import ExecutionClient
 from ..storage import Storage
 from ..strategy import STRATEGIES
 
-_APPLE_TOUCH_ICON_PNG = base64.b64decode(
+def _safe_b64_decode(b64_str: str) -> bytes | None:
+    """Decode base64, auto-padding to a multiple of 4. Returns None on failure.
+
+    Defensive: a malformed embedded asset must NEVER take down the dashboard.
+    """
+    try:
+        s = "".join(b64_str.split())  # strip all whitespace/newlines
+        s += "=" * (-len(s) % 4)      # restore missing padding
+        return base64.b64decode(s)
+    except Exception:
+        return None
+
+
+_APPLE_TOUCH_ICON_PNG = _safe_b64_decode(
     "iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAACWklEQVR42u3doRWEQBBEQRI4geEEjqiIkNBwKALg/CkEj9c7W+IH0EzpZfiM30uq0uAjCGgJaAloCWgBLQEtAS0BLQEtoKXOQK/bJb0W0AIaaAEtAS0BLaCBFtBAC+j/pnmRbge0gAZaQAMtoIEW0AIaaAENtIAGWkBLQAtooAU00AIaaAEtAS2ggRbQQAtooAW0BLSABlpAAy2ggRbQEtACGmgBDbSATgC9H2dU9gLtwEADDTTQQAMNNNBAAw20vUA7MNBAAw000EADDTTQQANtL9BAA10JdBqgNHCt7wUaaKCBBhpooIEGGmiggQYaaKCBBhpooIEGGmiggQYaaKCBBhpooIFOrre9QAMNNNBAAw000EADbS/QDgw00EADDTTQQAMNNNBA2wu0AwMNNNBAAw000EADDTTQ9gINNNBAAw000EADDTTQQDuwvUADDTTQQAMNNNBAAw000A5sL9BAAw000EADDTTQQAMNtAPbCzTQQAMNNNBAAw000EAD7cD2Ag000EC3BdRPg4AGmiggQYaaKCBBhpooIEGGmiggQYaaKCBBhpooIEGGmiggQYa6GTQaYDSwFXbCzTQQAMNNNBAAw000PYC7cBAAw000EADDTTQQAMNtL1AOzDQQAMNdC3Q8tAM0AIaaAEtAS2ggRbQQAtooAW0BLSABlpAAy2ggRbQEtACGmgBDbSABlpAS0ALaKAFNNACGmgBLQEtoIEW0EALaKBVD7T0ZEALaKAFtAS0BLSABlpAA63+QEvJAS2gJaAloCWgBbQEtAS0BLQEtICWGu8HpCQRe+zufA4AAAAASUVORK5CYII="
 )
 
