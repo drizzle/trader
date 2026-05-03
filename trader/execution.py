@@ -79,11 +79,16 @@ class ExecutionClient:
         # Alpaca client order IDs must be unique. Truncate uuid for readability in logs.
         client_order_id = f"trader-{uuid.uuid4().hex[:16]}"
 
+        # Crypto symbols look like "BTC/USD". They trade 24/7, so DAY orders
+        # would be rejected — they need GTC. Equities still use DAY.
+        is_crypto = "/" in symbol
+        tif = TimeInForce.GTC if is_crypto else TimeInForce.DAY
+
         req = MarketOrderRequest(
             symbol=symbol,
             qty=qty,
             side=side,
-            time_in_force=TimeInForce.DAY,
+            time_in_force=tif,
             client_order_id=client_order_id,
         )
 

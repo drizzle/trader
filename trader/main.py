@@ -50,7 +50,8 @@ def tick(
         logger.warning("Kill switch engaged — skipping tick")
         return
 
-    if not execution.is_market_open():
+    # Crypto trades 24/7 — skip the equity-market-hours gate for crypto strategies.
+    if not strategy.is_crypto and not execution.is_market_open():
         logger.debug("Market closed — skipping tick")
         return
 
@@ -82,7 +83,10 @@ def tick(
 
     # 3. Fetch bars and compute signals.
     try:
-        bars = data_client.daily_bars(strategy.universe, lookback_days=400)
+        if strategy.is_crypto:
+            bars = data_client.crypto_daily_bars(strategy.universe, lookback_days=400)
+        else:
+            bars = data_client.daily_bars(strategy.universe, lookback_days=400)
     except Exception as e:
         logger.error(f"Failed to fetch bars: {e}")
         alerts.send(f"⚠️ Trader: failed to fetch bars: {e}")
@@ -117,13 +121,24 @@ def tick(
             continue
 
         target_dollars = account.equity * s.target_pct
-        target_shares = math.floor(target_dollars / price)  # whole shares only for v1
-        current_shares = int(positions[s.symbol].qty) if s.symbol in positions else 0
-        diff = target_shares - current_shares
-
-        if diff == 0:
-            logger.debug(f"{s.symbol}: already at target ({current_shares} shares)")
-            continue
+        if strategy.is_crypto:
+            # Fractional crypto: keep float qty, round to 8 decimals (Alpaca's
+            # precision for BTC). Skip dust below the typical 0.0001 BTC min.
+            target_qty = round(target_dollars / price, 8)
+            current_qty = float(positions[s.symbol].qty) if s.symbol in positions else 0.0
+            diff = round(target_qty - current_qty, 8)
+            if abs(diff) < 0.0001:
+                logger.debug(
+                    f"{s.symbol}: already near target ({current_qty} ≈ {target_qty})"
+                )
+                continue
+        else:
+            target_qty = math.floor(target_dollars / price)  # whole shares for equities
+            current_qty = int(positions[s.symbol].qty) if s.symbol in positions else 0
+            diff = target_qty - current_qty
+            if diff == 0:
+                logger.debug(f"{s.symbol}: already at target ({current_qty} shares)")
+                continue
 
         side = OrderSide.BUY if diff > 0 else OrderSide.SELL
         order_id = execution.submit_market_order(

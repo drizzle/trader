@@ -2,18 +2,18 @@
 
 # Universe of tickers the strategy will consider.
 universe:
-  - SPY
+  - BTC/USD
 
 # Which strategy to run. Must match a class registered in trader/strategy/__init__.py
 strategy:
-  name: sma_crossover
+  name: btc_sma
   params:
-    fast_window: 50
-    slow_window: 200
-    target_symbol: SPY
+    fast_window: 20
+    slow_window: 50
+    target_symbol: BTC/USD
     target_allocation: 0.95   # fraction of equity to deploy when long signal active
 
-# How often to run the strategy tick (during market hours only).
+# How often to run the strategy tick. Crypto is 24/7 so this runs continuously.
 schedule:
   interval_minutes: 15
 
