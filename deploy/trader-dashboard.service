@@ -19,7 +19,7 @@ StandardError=journal
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/trader/data
+ReadWritePaths=/opt/trader/data /opt/trader/config.yaml
 PrivateTmp=true
 
 [Install]

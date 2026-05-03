@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Deploy strategy{% endblock %}
+{% block heading %}Deploy strategy{% endblock %}
+{% block content %}
+
+{% if flash_err %}
+  <div class="card" style="border-color: rgba(255,77,109,0.32); background: var(--neg-soft);">
+    <strong style="color: var(--neg);">⚠</strong> {{ flash_err }}
+  </div>
+{% endif %}
+
+<div class="card">
+  <h2>Confirm strategy switch</h2>
+  <div class="grid grid-3">
+    <div class="stat">
+      <div class="label">Currently active</div>
+      <div class="value" style="font-size:1.05rem">{{ current_name }}</div>
+      <div class="muted mini">{{ current_universe | join(", ") }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">→ Will switch to</div>
+      <div class="value pos" style="font-size:1.05rem">{{ details.name }}</div>
+      <div class="muted mini">{{ details.universe | join(", ") if details.universe else "n/a" }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Class</div>
+      <div class="value" style="font-size:1.05rem">{{ details.class_name }}</div>
+    </div>
+  </div>
+
+  <h3 style="margin-top: 20px; margin-bottom: 8px; font-size: 12px; color: var(--fg-2);
+             text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500;">
+    Strategy logic
+  </h3>
+  <pre class="logic-block">{{ details.logic }}</pre>
+
+  <h3 style="margin-top: 16px; margin-bottom: 8px; font-size: 12px; color: var(--fg-2);
+             text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500;">
+    Default params (used for this deploy)
+  </h3>
+  <pre class="code-block">{{ details.params | tojson(indent=2) }}</pre>
+</div>
+
+<div class="card">
+  <h2>What will happen</h2>
+  <ol style="color: var(--fg-1); line-height: 1.8; padding-left: 20px; margin: 0;">
+    <li>Engage the kill switch (so the running trader stops placing orders).</li>
+    <li>If <em>Flatten</em> is checked, close all open positions via Alpaca.</li>
+    <li>Rewrite <code>config.yaml</code> atomically with the new strategy + universe.</li>
+    <li>Run <code>sudo systemctl restart trader</code> to load the new config.</li>
+    <li>Kill switch stays engaged — release it on <a href="/risk" style="color: var(--accent)">Risk</a> when ready.</li>
+  </ol>
+</div>
+
+<form method="post" action="/strategy/deploy" autocomplete="off">
+  <div class="card">
+    <h2>Options</h2>
+    <input type="hidden" name="name" value="{{ details.name }}">
+
+    <label style="display: flex; align-items: flex-start; gap: 10px; padding: 12px;
+                  background: var(--bg-1); border: 1px solid var(--border-2);
+                  border-radius: var(--r-md); cursor: pointer;">
+      <input type="checkbox" name="flatten" checked
+             style="margin-top: 3px; accent-color: var(--accent);">
+      <div>
+        <div style="font-weight: 600; color: var(--fg-0);">Flatten existing positions before restart</div>
+        <div style="color: var(--fg-2); font-size: 12px; margin-top: 4px;">
+          Closes all open positions via Alpaca before the new strategy boots.
+          Recommended unless you want the new strategy to inherit the current portfolio.
+        </div>
+      </div>
+    </label>
+
+    <h3 style="margin-top: 20px; margin-bottom: 8px; font-size: 12px; color: var(--fg-2);
+               text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500;">
+      Type <code>{{ details.name }}</code> to confirm
+    </h3>
+    <input type="text" name="confirm" required autocomplete="off"
+           placeholder="{{ details.name }}"
+           style="width: 100%; max-width: 420px;">
+
+    <div style="margin-top: 18px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <button type="submit"
+              style="background: var(--neg) !important; border-color: var(--neg) !important;
+                     color: var(--bg-0) !important;">
+        Deploy {{ details.name }}
+      </button>
+      <a href="/strategy" style="color: var(--fg-2); text-decoration: none;
+                                  padding: 9px 16px; font-size: 12px;">
+        Cancel
+      </a>
+    </div>
+  </div>
+</form>
+
+{% endblock %}

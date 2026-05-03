@@ -23,6 +23,14 @@ install -m 644 "${INSTALL_DIR}/deploy/trader.service"           /etc/systemd/sys
 install -m 644 "${INSTALL_DIR}/deploy/trader-dashboard.service" /etc/systemd/system/trader-dashboard.service
 systemctl daemon-reload
 
+echo "==> Installing sudoers entry (lets dashboard restart trader service)"
+install -m 440 "${INSTALL_DIR}/deploy/sudoers.d/trader-restart" /etc/sudoers.d/trader-restart
+if ! visudo -cf /etc/sudoers.d/trader-restart >/dev/null; then
+  echo "  !! sudoers validation failed — removing file"
+  rm -f /etc/sudoers.d/trader-restart
+  exit 1
+fi
+
 echo "==> Restarting services"
 systemctl restart trader
 systemctl restart trader-dashboard 2>/dev/null || echo "  (dashboard not yet enabled — run: sudo systemctl enable --now trader-dashboard)"

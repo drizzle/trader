@@ -3,6 +3,17 @@
 {% block heading %}System{% endblock %}
 {% block content %}
 
+{% if flash_msg %}
+  <div class="card" style="border-color: var(--accent-line); background: var(--accent-soft);">
+    <strong style="color: var(--accent);">✓</strong> {{ flash_msg }}
+  </div>
+{% endif %}
+{% if flash_err %}
+  <div class="card" style="border-color: rgba(255,77,109,0.32); background: var(--neg-soft);">
+    <strong style="color: var(--neg);">⚠</strong> {{ flash_err }}
+  </div>
+{% endif %}
+
 <div class="card">
   <h2>System Health</h2>
   <div class="status-row">
@@ -103,6 +114,29 @@
   </div>
   <pre class="logic-block">{{ strategy_details.logic }}</pre>
   <pre class="code-block">{{ strategy_details.params | tojson(indent=2) }}</pre>
+
+  {% if not strategy_details.active and not read_only %}
+    <div style="margin-top: 14px; padding: 12px; background: var(--bg-1);
+                border: 1px solid var(--border-2); border-radius: var(--r-md);
+                display: flex; align-items: center; justify-content: space-between;
+                gap: 12px; flex-wrap: wrap;">
+      <div style="color: var(--fg-1); font-size: 12px;">
+        Switch the live trader to <code>{{ strategy_details.name }}</code>.
+        This will flatten current positions and restart the trader process.
+      </div>
+      <a href="/strategy/deploy?name={{ strategy_details.name }}"
+         style="background: var(--accent); color: var(--bg-0);
+                padding: 9px 16px; border-radius: var(--r-md);
+                font-weight: 700; font-size: 12px; text-decoration: none;
+                letter-spacing: 0.02em; white-space: nowrap;">
+        Deploy {{ strategy_details.name }} →
+      </a>
+    </div>
+  {% elif not strategy_details.active and read_only %}
+    <div style="margin-top: 14px; padding: 10px; color: var(--fg-2); font-size: 12px;">
+      Dashboard is in read-only mode. Set <code>DASHBOARD_READ_ONLY=false</code> to enable deploy.
+    </div>
+  {% endif %}
 </div>
 
 <div class="card">

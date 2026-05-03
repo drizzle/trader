@@ -141,12 +141,32 @@ def tick(
                 continue
 
         side = OrderSide.BUY if diff > 0 else OrderSide.SELL
+        order_qty = abs(diff)
+
+        # Buying-power gate — only meaningful for BUYs. SELLs reduce exposure
+        # and don't consume cash. Caps qty (or skips) so we don't get rejected
+        # by Alpaca for "insufficient buying power".
+        if side == OrderSide.BUY:
+            capped_qty, cap_msg = risk.cap_qty_to_buying_power(
+                order_qty, price, account.buying_power,
+                is_crypto=strategy.is_crypto,
+            )
+            if capped_qty <= 0:
+                logger.warning(f"{s.symbol}: {cap_msg}")
+                alerts.send(f"⚠️ *Order skipped* {s.symbol}: {cap_msg}")
+                continue
+            if cap_msg:
+                # Sized down — log but don't alert (would be too noisy on a
+                # busy day). The order itself will still emit its alert below.
+                logger.warning(f"{s.symbol}: {cap_msg}")
+            order_qty = capped_qty
+
         order_id = execution.submit_market_order(
-            symbol=s.symbol, qty=abs(diff), side=side, strategy=strategy.name
+            symbol=s.symbol, qty=order_qty, side=side, strategy=strategy.name
         )
         if order_id:
             alerts.send(
-                f"📈 *Order submitted*\n{side.value.upper()} {abs(diff)} {s.symbol} "
+                f"📈 *Order submitted*\n{side.value.upper()} {order_qty} {s.symbol} "
                 f"@ ~${price:.2f}\n{s.rationale}"
             )
 

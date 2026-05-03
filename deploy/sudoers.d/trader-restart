@@ -1,0 +1,11 @@
+# Allows the `trader` user (which the dashboard runs as) to restart the
+# trader service and check its state — and ONLY those two commands. No
+# other privilege is granted.
+#
+# Installed to /etc/sudoers.d/trader-restart by deploy/update.sh.
+# Validated with `visudo -cf` after install.
+#
+# To install manually:
+#   sudo install -m 440 deploy/sudoers.d/trader-restart /etc/sudoers.d/trader-restart
+#   sudo visudo -cf /etc/sudoers.d/trader-restart
+trader ALL=(root) NOPASSWD: /bin/systemctl restart trader, /bin/systemctl is-active trader

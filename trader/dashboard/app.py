@@ -515,7 +515,7 @@ def create_app(cfg: Config) -> FastAPI:
         return RedirectResponse(url="/trades", status_code=307)
 
     @app.get("/strategy", response_class=HTMLResponse)
-    def strategy_view(request: Request):
+    def strategy_view(request: Request, msg: str = "", err: str = ""):
         view_started = time.perf_counter()
         signals = _read_signals(cfg.db_path, limit=20)
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
@@ -599,7 +599,110 @@ def create_app(cfg: Config) -> FastAPI:
             "kill_engaged": kill_engaged,
             "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
+            "flash_msg": msg,
+            "flash_err": err,
         })
+
+    @app.get("/strategy/deploy", response_class=HTMLResponse)
+    def strategy_deploy_view(request: Request, name: str = "", err: str = ""):
+        """Confirmation page for switching the deployed strategy."""
+        if read_only:
+            return HTMLResponse(
+                "Dashboard is read-only. Set DASHBOARD_READ_ONLY=false to enable deploys.",
+                status_code=403,
+            )
+        if not name or name not in STRATEGIES:
+            return RedirectResponse(
+                url="/strategy?err=Unknown+or+missing+strategy+name", status_code=303
+            )
+        if name == cfg.strategy.name:
+            return RedirectResponse(
+                url=f"/strategy?err={name}+is+already+the+active+strategy",
+                status_code=303,
+            )
+        details = _strategy_details(name, cfg.strategy.name, cfg.strategy.params)
+        kill_engaged = Path(cfg.risk.kill_switch_path).exists()
+        return templates.TemplateResponse(request, "strategy_deploy.html", {
+            "active_tab": "strategy",
+            "cfg": cfg,
+            "details": details,
+            "current_name": cfg.strategy.name,
+            "current_universe": cfg.universe,
+            "current_params": cfg.strategy.params,
+            "kill_engaged": kill_engaged,
+            "read_only": read_only,
+            "mode": "LIVE" if cfg.alpaca.live else "PAPER",
+            "flash_err": err,
+        })
+
+    @app.post("/strategy/deploy")
+    async def strategy_deploy_submit(request: Request):
+        """Run `python -m trader switch-strategy ...` as a subprocess.
+
+        Important: the dashboard NEVER calls Alpaca's trading API directly.
+        All flatten/order activity happens inside the CLI subprocess, which
+        runs as the trader user with .env credentials.
+        """
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
+
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+        name = (form.get("name", [""])[0] or "").strip()
+        flatten = form.get("flatten", [""])[0] == "on"
+        confirm = (form.get("confirm", [""])[0] or "").strip()
+
+        if name not in STRATEGIES:
+            return RedirectResponse(
+                url="/strategy?err=Unknown+strategy", status_code=303
+            )
+        if confirm != name:
+            return RedirectResponse(
+                url=f"/strategy/deploy?name={name}&err=Confirmation+text+did+not+match",
+                status_code=303,
+            )
+        if name == cfg.strategy.name:
+            return RedirectResponse(
+                url=f"/strategy?err={name}+is+already+active", status_code=303,
+            )
+
+        cmd = [
+            sys.executable, "-m", "trader", "switch-strategy",
+            "--name", name, "--restart",
+        ]
+        if flatten:
+            cmd.append("--flatten")
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(Path(__file__).resolve().parents[2]),
+                capture_output=True, text=True, timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            return RedirectResponse(
+                url="/strategy?err=Deploy+timed+out+after+120s+-+check+journalctl",
+                status_code=303,
+            )
+
+        if proc.returncode == 0:
+            from urllib.parse import quote
+            return RedirectResponse(
+                url=f"/strategy?msg={quote(f'Deployed {name}. Kill switch is engaged — release it on /risk when ready to trade.')}",
+                status_code=303,
+            )
+
+        # Surface the last useful line of stderr so the user can see why.
+        stderr_lines = [
+            ln for ln in (proc.stderr or "").splitlines()
+            if ln.strip() and "ERROR" in ln.upper()
+        ]
+        last = stderr_lines[-1] if stderr_lines else (proc.stderr or proc.stdout or "")[-300:]
+        from urllib.parse import quote
+        return RedirectResponse(
+            url=f"/strategy?err={quote(f'Deploy failed (rc={proc.returncode}): {last}')}",
+            status_code=303,
+        )
 
     @app.get("/trades", response_class=HTMLResponse)
     def trades_view(request: Request):
