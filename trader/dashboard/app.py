@@ -1,11 +1,13 @@
 """FastAPI dashboard.
 
-Three views:
+Four views:
   /            → strategy summary (latest signals, current target, kill-switch state)
   /trades      → positions + recent fills + equity curve since deployment
+  /risk        → all risk caps, current exposures vs limits, kill-switch ops
   /backtests   → list of HTML reports under data/backtests/
 
-Read-only. Binds to 127.0.0.1 by default — access via SSH tunnel:
+Read-only (mostly — /risk has a kill-switch toggle). Binds to 127.0.0.1 by
+default — access via SSH tunnel:
     ssh -L 8000:localhost:8000 root@<droplet-ip>
     open http://localhost:8000
 """
@@ -13,10 +15,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..config import Config
@@ -88,6 +91,7 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.get("/trades", response_class=HTMLResponse)
     def trades_view(request: Request):
+        kill_engaged = Path(cfg.risk.kill_switch_path).exists()
         orders = _read_orders(cfg.db_path, limit=50)
         equity_curve = _read_equity_curve(cfg.db_path)
 
@@ -123,6 +127,7 @@ def create_app(cfg: Config) -> FastAPI:
         return templates.TemplateResponse(request, "trades.html", {
             "active_tab": "trades",
             "cfg": cfg,
+            "kill_engaged": kill_engaged,
             "positions": positions,
             "account": account_data,
             "orders": orders,
@@ -131,8 +136,77 @@ def create_app(cfg: Config) -> FastAPI:
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
         })
 
+    @app.get("/risk", response_class=HTMLResponse)
+    def risk_view(request: Request):
+        kill_path = Path(cfg.risk.kill_switch_path)
+        kill_engaged = kill_path.exists()
+        kill_reason = kill_path.read_text().strip() if kill_engaged else ""
+
+        # Pull current account + positions to compare against caps.
+        ec = _execution()
+        account_data = {}
+        positions = []
+        sod_equity = None
+        daily_loss_pct = None
+
+        if ec is not None:
+            try:
+                acct = ec.account()
+                account_data = {
+                    "cash": acct.cash, "equity": acct.equity, "buying_power": acct.buying_power
+                }
+                positions = [
+                    {"symbol": p.symbol, "qty": p.qty,
+                     "market_value": p.market_value,
+                     "pct_of_equity": (p.market_value / acct.equity * 100) if acct.equity else 0.0,
+                     "pct_of_cap": (p.market_value / acct.equity / cfg.risk.max_position_pct * 100)
+                                   if acct.equity and cfg.risk.max_position_pct else 0.0}
+                    for p in ec.positions().values()
+                ]
+                # Compute daily loss vs the start-of-day equity snapshot.
+                today = datetime.now(timezone.utc).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                sod_equity = Storage(cfg.db_path).equity_at_or_before(
+                    today.isoformat(timespec="seconds")
+                )
+                if sod_equity:
+                    daily_loss_pct = (sod_equity - acct.equity) / sod_equity * 100
+            except Exception as e:
+                account_data = {"error": str(e)}
+
+        return templates.TemplateResponse(request, "risk.html", {
+            "active_tab": "risk",
+            "cfg": cfg,
+            "kill_engaged": kill_engaged,
+            "kill_reason": kill_reason,
+            "kill_path": str(kill_path),
+            "account": account_data,
+            "positions": positions,
+            "sod_equity": sod_equity,
+            "daily_loss_pct": daily_loss_pct,
+            "mode": "LIVE" if cfg.alpaca.live else "PAPER",
+        })
+
+    @app.post("/risk/kill-switch/engage")
+    def kill_switch_engage():
+        kill_path = Path(cfg.risk.kill_switch_path)
+        kill_path.parent.mkdir(parents=True, exist_ok=True)
+        kill_path.write_text(
+            f"engaged via dashboard at {datetime.now(timezone.utc).isoformat(timespec='seconds')}"
+        )
+        return RedirectResponse(url="/risk", status_code=303)
+
+    @app.post("/risk/kill-switch/release")
+    def kill_switch_release():
+        kill_path = Path(cfg.risk.kill_switch_path)
+        if kill_path.exists():
+            kill_path.unlink()
+        return RedirectResponse(url="/risk", status_code=303)
+
     @app.get("/backtests", response_class=HTMLResponse)
     def backtests_view(request: Request):
+        kill_engaged = Path(cfg.risk.kill_switch_path).exists()
         bt_dir = cfg.data_dir / "backtests"
         bt_dir.mkdir(parents=True, exist_ok=True)
         reports = sorted(
@@ -146,6 +220,7 @@ def create_app(cfg: Config) -> FastAPI:
         return templates.TemplateResponse(request, "backtests.html", {
             "active_tab": "backtests",
             "cfg": cfg,
+            "kill_engaged": kill_engaged,
             "reports": list(reports),
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
         })

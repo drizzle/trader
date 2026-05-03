@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from .base import Signal, Strategy
 from .sma_crossover import SmaCrossoverStrategy
+from .yypt_tqqq_rsi import YyptTqqqRsiStrategy
 
 # Register strategies by their config name.
 STRATEGIES: dict[str, type[Strategy]] = {
-    "sma_crossover": SmaCrossoverStrategy,
+    "sma_crossover":   SmaCrossoverStrategy,
+    "yypt_tqqq_rsi":   YyptTqqqRsiStrategy,
 }
 
 

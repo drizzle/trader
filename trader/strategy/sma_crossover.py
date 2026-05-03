@@ -36,7 +36,9 @@ class SmaCrossoverStrategy(Strategy):
     def compute(self, bars: dict[str, pd.DataFrame]) -> list[Signal]:
         df = bars.get(self.target_symbol)
         if df is None or len(df) < self.slow_window + 1:
-            logger.warning(
+            # DEBUG (not WARNING): expected during backtest warmup. In live trading
+            # we'd never legitimately have <200 bars of SPY history.
+            logger.debug(
                 f"Not enough bars for {self.target_symbol} "
                 f"(have {0 if df is None else len(df)}, need {self.slow_window + 1})"
             )

@@ -24,6 +24,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .config import RiskConfig
 from .strategy import Strategy
 
 
@@ -133,11 +134,17 @@ def run_backtest(
     slippage_bps: float = 5.0,
     start: str | datetime | None = None,
     end: str | datetime | None = None,
+    risk_config: RiskConfig | None = None,
 ) -> BacktestResult:
     """Run a daily-bar backtest. Returns a BacktestResult.
 
     `bars` must be a {symbol: DataFrame} where each DataFrame has at minimum
     'open' and 'close' columns and a DatetimeIndex.
+
+    If `risk_config` is provided, the backtest enforces:
+      - max_position_pct (caps each per-symbol target)
+      - min_cash_buffer_pct (reduces aggregate target if it would breach)
+    Daily-loss limit + kill-switch are not modeled — they're runtime concerns.
     """
     # Build a unified date index across all symbols (intersection, so every symbol has a price).
     common_index = None
@@ -189,6 +196,31 @@ def run_backtest(
             for sym, df in bars.items()
         }
         signals = strategy.compute(past_bars)
+
+        # --- Risk-manager pass (matches what live execution enforces) ---
+        if risk_config is not None:
+            # Cap per-symbol targets at max_position_pct.
+            capped: list = []
+            for s in signals:
+                if s.target_pct > risk_config.max_position_pct:
+                    capped.append(type(s)(
+                        s.symbol, risk_config.max_position_pct,
+                        f"{s.rationale} | capped to max_position_pct",
+                    ))
+                else:
+                    capped.append(s)
+            signals = capped
+
+            # Cap aggregate exposure to leave the cash buffer.
+            total = sum(s.target_pct for s in signals)
+            max_total = 1.0 - risk_config.min_cash_buffer_pct
+            if total > max_total and total > 0:
+                scale = max_total / total
+                signals = [
+                    type(s)(s.symbol, s.target_pct * scale,
+                            f"{s.rationale} | scaled by {scale:.3f} for cash buffer")
+                    for s in signals
+                ]
 
         # Mark current portfolio at t's OPEN (pre-fill, for accurate equity calc).
         for s in signals:
