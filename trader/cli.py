@@ -17,6 +17,18 @@ from pathlib import Path
 from loguru import logger
 
 
+def _strategy_config_path(config_path: str, strategy: str | None) -> str:
+    """Prefer config.<strategy>.yaml when a dashboard strategy override is given."""
+    if not strategy:
+        return config_path
+
+    path = Path(config_path)
+    candidate = path.with_name(f"config.{strategy}.yaml")
+    if candidate.exists():
+        return str(candidate)
+    return config_path
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     from .main import run
     run()
@@ -28,13 +40,27 @@ def _cmd_backtest(args: argparse.Namespace) -> int:
     from .config import load_config
     from .data import DataClient
     from .reports import render_report
-    from .strategy import build_strategy
+    from .strategy import STRATEGIES, build_strategy
 
     cfg = load_config(args.config)
     logger.remove()
     logger.add(sys.stderr, level=cfg.log_level)
 
-    strategy = build_strategy(cfg.strategy.name, cfg.strategy.params)
+    # Allow CLI override of which strategy to backtest, without editing config.yaml.
+    if args.strategy:
+        if args.strategy not in STRATEGIES:
+            logger.error(
+                f"Unknown strategy '{args.strategy}'. Available: {list(STRATEGIES.keys())}"
+            )
+            return 1
+        # Use empty params unless the configured strategy matches the override.
+        params = cfg.strategy.params if args.strategy == cfg.strategy.name else {}
+        strategy = build_strategy(args.strategy, params)
+        strategy_name_for_filename = args.strategy
+    else:
+        strategy = build_strategy(cfg.strategy.name, cfg.strategy.params)
+        strategy_name_for_filename = cfg.strategy.name
+
     data = DataClient(cfg.alpaca)
 
     logger.info(
@@ -46,8 +72,9 @@ def _cmd_backtest(args: argparse.Namespace) -> int:
         return 1
 
     logger.info(
-        f"Running backtest: cash=${args.cash:,.0f} slippage={args.slippage_bps}bps "
-        f"commission=${args.commission:.2f}"
+        f"Running backtest [{strategy.name}]: cash=${args.cash:,.0f} "
+        f"slippage={args.slippage_bps}bps commission=${args.commission:.2f}"
+        f"{' (risk caps OFF)' if args.no_risk else ''}"
     )
     result = run_backtest(
         strategy=strategy,
@@ -57,6 +84,7 @@ def _cmd_backtest(args: argparse.Namespace) -> int:
         slippage_bps=args.slippage_bps,
         start=args.start,
         end=args.end,
+        risk_config=None if args.no_risk else cfg.risk,
     )
 
     metrics = result.metrics
@@ -70,7 +98,7 @@ def _cmd_backtest(args: argparse.Namespace) -> int:
         out_path = Path(args.output)
     else:
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-        out_path = out_dir / f"{cfg.strategy.name}_{ts}.html"
+        out_path = out_dir / f"{strategy_name_for_filename}_{ts}.html"
 
     written = render_report(result, out_path)
     logger.info(f"Report written: {written}")
@@ -82,8 +110,20 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
     import uvicorn
     from .dashboard.app import create_app
     from .config import load_config
+    from .strategy import STRATEGIES
 
-    cfg = load_config(args.config)
+    if args.strategy and args.strategy not in STRATEGIES:
+        logger.error(
+            f"Unknown strategy '{args.strategy}'. Available: {list(STRATEGIES.keys())}"
+        )
+        return 1
+
+    cfg = load_config(_strategy_config_path(args.config, args.strategy))
+    if args.strategy and cfg.strategy.name != args.strategy:
+        cfg = cfg.model_copy(
+            update={"strategy": cfg.strategy.model_copy(update={"name": args.strategy})}
+        )
+
     app = create_app(cfg)
     uvicorn.run(app, host=args.host, port=args.port, log_level=cfg.log_level.lower())
     return 0
@@ -98,6 +138,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p_bt = sub.add_parser("backtest", help="Run a backtest, output an HTML report.")
     p_bt.add_argument("--config", default="config.yaml")
+    p_bt.add_argument("--strategy", default=None,
+                      help="Strategy name to backtest (overrides config.yaml). "
+                           "E.g. sma_crossover, yypt_tqqq_rsi.")
     p_bt.add_argument("--lookback-days", type=int, default=2500,
                       help="How many days of history to fetch (default ~10y).")
     p_bt.add_argument("--start", help="ISO date e.g. 2018-01-01")
@@ -105,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
     p_bt.add_argument("--cash", type=float, default=100_000.0)
     p_bt.add_argument("--commission", type=float, default=0.0)
     p_bt.add_argument("--slippage-bps", type=float, default=5.0)
+    p_bt.add_argument("--no-risk", action="store_true",
+                      help="Disable risk caps in backtest (compare with/without).")
     p_bt.add_argument("--output", help="Path to write report (default: data/backtests/<name>.html)")
     p_bt.set_defaults(func=_cmd_backtest)
 
@@ -113,6 +158,9 @@ def main(argv: list[str] | None = None) -> int:
     p_dash.add_argument("--host", default="127.0.0.1",
                         help="Bind host. Keep 127.0.0.1 and access via SSH tunnel.")
     p_dash.add_argument("--port", type=int, default=8000)
+    p_dash.add_argument("--strategy", default=None,
+                        help="Dashboard strategy name. If config.<strategy>.yaml exists, "
+                             "that config is loaded.")
     p_dash.set_defaults(func=_cmd_dashboard)
 
     args = parser.parse_args(argv)
