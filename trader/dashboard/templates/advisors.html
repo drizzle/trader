@@ -53,60 +53,100 @@
   </div>
 </div>
 
-{% if advisor.advisors %}
 <div class="card">
-  <h2>Per-Advisor Recommendations ({{ advisor.advisors|length }} advisors × {{ advisor.matrix_rows|length }} symbols)</h2>
-  <div style="overflow-x:auto">
+  <h2>Consensus per Symbol</h2>
+  <div class="scroll">
     <table>
       <thead><tr>
-        <th>Symbol</th>
-        {% for adv in advisor.advisors %}<th>{{ adv }}</th>{% endfor %}
+        <th>Symbol</th><th>Decision</th><th>Confidence</th><th>Reasoning</th>
       </tr></thead>
       <tbody>
-      {% for row in advisor.matrix_rows %}
+      {% for row in advisor.rows %}
         <tr>
           <td><strong>{{ row.symbol }}</strong></td>
-          {% for cell in row.cells %}
-            <td>
-              <span class="decision {{ cell.tone }}" title="{{ cell.rationale|e }}">
-                {{ cell.action }}{% if cell.confidence is not none %} · {{ "%.0f%%"|format(cell.confidence * 100) }}{% endif %}
-              </span>
-            </td>
-          {% endfor %}
+          <td><span class="decision {{ row.tone }}">{{ row.action }}</span></td>
+          <td>{% if row.confidence is not none %}{{ "%.0f%%"|format((row.confidence or 0) * 100) if row.confidence <= 1 else row.confidence }}{% else %}n/a{% endif %}</td>
+          <td>{{ row.reasoning or "No advisory output for this symbol yet." }}</td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
-  <p class="muted" style="font-size:0.78rem; margin-top:10px">
-    Hover any cell to see the full rationale. Confidence is the LLM's self-reported value (0-100%), not a calibrated probability.
-  </p>
 </div>
 
+{% if advisor.matrix_rows %}
 <div class="card">
   <h2>Full Rationales</h2>
+  <p class="muted" style="font-size:0.85rem; margin:0 0 12px">
+    Pick a symbol below to expand all five advisor rationales for that ticker.
+    Collapsed by default to keep multi-symbol universes scannable.
+  </p>
+
+  <div class="symbol-tabs" role="tablist">
+    {% for row in advisor.matrix_rows %}
+      <button type="button"
+              class="symbol-tab"
+              role="tab"
+              data-symbol="{{ row.symbol }}"
+              aria-selected="false">
+        {{ row.symbol }}
+      </button>
+    {% endfor %}
+  </div>
+
   <div class="rationale-list">
     {% for row in advisor.matrix_rows %}
-      {% for cell in row.cells %}
-        <article class="rationale">
-          <header class="rationale-head">
-            <span class="rationale-symbol">{{ row.symbol }}</span>
-            <span class="rationale-advisor">{{ cell.advisor }}</span>
-            <span class="decision {{ cell.tone }}">{{ cell.action }}</span>
-            {% if cell.confidence is not none %}
-              <span class="rationale-conf">{{ "%.0f%%"|format(cell.confidence * 100) }}</span>
-            {% endif %}
-          </header>
-          <p class="rationale-body">{{ cell.rationale or "—" }}</p>
-        </article>
-      {% endfor %}
+      <div class="rationale-group" data-symbol="{{ row.symbol }}" hidden>
+        {% for cell in row.cells %}
+          <article class="rationale">
+            <header class="rationale-head">
+              <span class="rationale-symbol">{{ row.symbol }}</span>
+              <span class="rationale-advisor">{{ cell.advisor }}</span>
+              <span class="decision {{ cell.tone }}">{{ cell.action }}</span>
+              {% if cell.confidence is not none %}
+                <span class="rationale-conf">{{ "%.0f%%"|format(cell.confidence * 100) }}</span>
+              {% endif %}
+            </header>
+            <p class="rationale-body">{{ cell.rationale or "—" }}</p>
+          </article>
+        {% endfor %}
+      </div>
     {% endfor %}
+  </div>
+
+  <div class="rationale-empty muted" style="font-size:0.85rem; padding:14px 4px 4px">
+    Select a symbol above to view rationales.
   </div>
 </div>
 
 <style>
-  /* Stacked rationale cards — readable on mobile, no horizontal scroll. */
+  .symbol-tabs {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin: 4px 0 14px;
+  }
+  .symbol-tab {
+    background: var(--bg-1);
+    color: var(--fg-1);
+    border: 1px solid var(--border-2);
+    border-radius: var(--r-md);
+    padding: 8px 14px;
+    font: 600 13px var(--font-mono);
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    min-height: 40px;
+    transition: background 120ms, border-color 120ms, color 120ms;
+  }
+  .symbol-tab:hover { color: var(--fg-0); border-color: var(--border-3); }
+  .symbol-tab[aria-selected="true"] {
+    background: color-mix(in srgb, var(--accent) 14%, var(--bg-1));
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
   .rationale-list { display: flex; flex-direction: column; gap: 10px; }
+  .rationale-group { display: flex; flex-direction: column; gap: 10px; }
+  .rationale-group[hidden] { display: none; }
+
   .rationale {
     background: var(--bg-1);
     border: 1px solid var(--border-1);
@@ -123,9 +163,7 @@
     font-family: var(--font-mono); font-weight: 700;
     color: var(--fg-0); font-size: 13px;
   }
-  .rationale-advisor {
-    color: var(--fg-1); font-weight: 500;
-  }
+  .rationale-advisor { color: var(--fg-1); font-weight: 500; }
   .rationale-conf {
     margin-left: auto;
     font-family: var(--font-mono); font-variant-numeric: tabular-nums;
@@ -136,10 +174,10 @@
     font-size: 13px; line-height: 1.6;
     white-space: normal; word-break: break-word;
   }
-  /* Tone-tinted left border */
   .rationale:has(.decision.buy)  { border-left-color: var(--accent); }
   .rationale:has(.decision.sell) { border-left-color: var(--neg); }
   .rationale:has(.decision.hold) { border-left-color: var(--warn); }
+
   @media (max-width: 700px) {
     .rationale { padding: 11px 12px; }
     .rationale-head { gap: 8px; font-size: 11px; }
@@ -147,35 +185,39 @@
     .rationale-body { font-size: 14px; line-height: 1.55; }
   }
 </style>
+
+<script>
+  (function () {
+    var tabs = document.querySelectorAll('.symbol-tab');
+    var groups = document.querySelectorAll('.rationale-group');
+    var emptyMsg = document.querySelector('.rationale-empty');
+
+    function pick(symbol) {
+      tabs.forEach(function (t) {
+        t.setAttribute('aria-selected', t.dataset.symbol === symbol ? 'true' : 'false');
+      });
+      var any = false;
+      groups.forEach(function (g) {
+        var match = g.dataset.symbol === symbol;
+        g.hidden = !match;
+        if (match) any = true;
+      });
+      if (emptyMsg) emptyMsg.style.display = any ? 'none' : '';
+      try { sessionStorage.setItem('advisorSymbol', symbol); } catch (_) {}
+    }
+
+    tabs.forEach(function (t) {
+      t.addEventListener('click', function () { pick(t.dataset.symbol); });
+    });
+
+    // Restore prior selection on this session, otherwise leave collapsed.
+    var saved = null;
+    try { saved = sessionStorage.getItem('advisorSymbol'); } catch (_) {}
+    if (saved && document.querySelector('.symbol-tab[data-symbol="' + saved + '"]')) {
+      pick(saved);
+    }
+  })();
+</script>
 {% endif %}
-
-<div class="card">
-  <h2>Consensus per Symbol</h2>
-  <table>
-    <thead><tr>
-      <th>Symbol</th><th>Decision</th><th>Confidence</th><th>Reasoning</th>
-    </tr></thead>
-    <tbody>
-    {% for row in advisor.rows %}
-      <tr>
-        <td>{{ row.symbol }}</td>
-        <td><span class="decision {{ row.tone }}">{{ row.action }}</span></td>
-        <td>{% if row.confidence is not none %}{{ "%.0f%%"|format((row.confidence or 0) * 100) if row.confidence <= 1 else row.confidence }}{% else %}n/a{% endif %}</td>
-        <td>{{ row.reasoning or "No advisory output for this symbol yet." }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-
-<div class="card">
-  <h2>Security Model</h2>
-  <ul class="muted" style="font-size:0.85rem; line-height:1.6; margin:0; padding-left:20px">
-    <li>Advisor LLM calls send <strong>only</strong> ticker symbols + computed price stats (returns, RSI, drawdown) to DeepSeek over HTTPS.</li>
-    <li>Your <strong>Alpaca API key never leaves the droplet</strong>. The advisor module uses the read-only Data client; it has no reference to the trading client.</li>
-    <li>The DeepSeek key is loaded from <code>/opt/trader/.env</code> (mode 600) and sent only as an HTTPS Bearer header.</li>
-    <li>Recommendations are cached for 1 hour to limit LLM spend. "Force fresh" bypasses the cache.</li>
-  </ul>
-</div>
 
 {% endblock %}
