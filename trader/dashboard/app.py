@@ -447,6 +447,20 @@ def create_app(cfg: Config) -> FastAPI:
     def login_view():
         return _login_page()
 
+    def _request_is_https(request: Request) -> bool:
+        """Did the client connect over HTTPS?
+
+        When Caddy terminates TLS and reverse-proxies to uvicorn over HTTP,
+        `request.url.scheme` is "http". Caddy sets `X-Forwarded-Proto: https`
+        so we can recover the original scheme. For an SSH-tunnel scenario
+        (no proxy at all) the connection is plain HTTP, and we must NOT mark
+        the session cookie Secure or the browser will silently drop it,
+        producing an infinite login → / → login redirect loop.
+        """
+        if request.url.scheme == "https":
+            return True
+        return (request.headers.get("x-forwarded-proto") or "").lower() == "https"
+
     @app.post("/login")
     async def login_submit(request: Request):
         body = (await request.body()).decode()
@@ -467,7 +481,7 @@ def create_app(cfg: Config) -> FastAPI:
             token,
             max_age=session_seconds,
             httponly=True,
-            secure=True,
+            secure=_request_is_https(request),
             samesite="lax",
         )
         return response

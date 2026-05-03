@@ -5,8 +5,26 @@ import uuid
 from dataclasses import dataclass
 
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide, QueryOrderStatus, TimeInForce
+from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest
+
+# QueryOrderStatus moved between alpaca-py versions; import defensively so
+# an outdated dependency doesn't crash the dashboard at startup. We fall back
+# to filtering by string status in Python.
+try:
+    from alpaca.trading.enums import QueryOrderStatus  # type: ignore
+    _HAS_QUERY_ORDER_STATUS = True
+except ImportError:
+    QueryOrderStatus = None  # type: ignore
+    _HAS_QUERY_ORDER_STATUS = False
+
+# Order statuses Alpaca reports as "still open at the broker" — i.e. the
+# order's notional is still being held against buying power and we should
+# NOT fire a duplicate.
+_OPEN_STATUSES = {
+    "new", "accepted", "pending_new", "partially_filled",
+    "pending_cancel", "pending_replace", "accepted_for_bidding",
+}
 from loguru import logger
 
 from .config import AlpacaConfig
@@ -73,13 +91,28 @@ class ExecutionClient:
         our local BP cap thought there was room.
         """
         try:
-            req = GetOrdersRequest(status=QueryOrderStatus.OPEN, limit=100)
+            # Prefer the explicit OPEN filter when available; otherwise fetch
+            # the recent window and filter by status string in Python.
+            if _HAS_QUERY_ORDER_STATUS:
+                req = GetOrdersRequest(status=QueryOrderStatus.OPEN, limit=100)
+            else:
+                req = GetOrdersRequest(limit=100)
             orders = self._client.get_orders(filter=req)
         except Exception as e:
             logger.warning(f"Could not fetch open orders for {symbol}: {e}")
             return []
-        # Alpaca crypto orders use the slash form ("BTC/USD"); equity uses "AAPL".
-        return [o for o in orders if o.symbol == symbol]
+
+        # Alpaca crypto symbols use the slash form ("BTC/USD"); equity uses "AAPL".
+        result = []
+        for o in orders:
+            if o.symbol != symbol:
+                continue
+            # If the broker filter wasn't applied, drop anything terminal.
+            status = (getattr(o.status, "value", None) or str(o.status)).lower()
+            if not _HAS_QUERY_ORDER_STATUS and status not in _OPEN_STATUSES:
+                continue
+            result.append(o)
+        return result
 
     # --- writes ---
 
