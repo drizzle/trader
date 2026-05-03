@@ -45,10 +45,125 @@
 </div>
 {% endif %}
 
-<div class="card">
-  <h2>Equity Curve</h2>
-  <canvas id="equityChart" height="100"></canvas>
+<div class="card equity-card">
+  <div class="equity-head">
+    <div class="equity-meta">
+      <div class="equity-label">Equity</div>
+      <div class="equity-price" id="equityPrice">$—</div>
+      <div class="equity-delta" id="equityDelta">
+        <span class="d-abs">—</span>
+        <span class="d-pct">—</span>
+        <span class="d-range" id="equityRange">since deployment</span>
+      </div>
+    </div>
+    <div class="equity-ranges" id="equityRanges" role="tablist">
+      <button type="button" data-range="1D"  role="tab">1D</button>
+      <button type="button" data-range="1W"  role="tab">1W</button>
+      <button type="button" data-range="1M"  role="tab">1M</button>
+      <button type="button" data-range="3M"  role="tab">3M</button>
+      <button type="button" data-range="1Y"  role="tab">1Y</button>
+      <button type="button" data-range="ALL" role="tab" aria-selected="true">ALL</button>
+    </div>
+  </div>
+  <div class="equity-chart-wrap">
+    <canvas id="equityChart"></canvas>
+    <div class="equity-tooltip" id="equityTooltip" hidden>
+      <div class="t-price"></div>
+      <div class="t-time"></div>
+    </div>
+  </div>
 </div>
+
+<style>
+  .equity-card { padding: 22px 22px 18px; }
+  .equity-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+  }
+  .equity-label {
+    color: var(--fg-2); font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    font-weight: 600;
+  }
+  .equity-price {
+    font: 700 32px/1.05 var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-0);
+    margin-top: 4px;
+    letter-spacing: -0.01em;
+  }
+  .equity-delta {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    margin-top: 6px;
+    font: 500 13px/1.2 var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .equity-delta .d-abs { font-weight: 600; }
+  .equity-delta .d-pct { color: var(--fg-2); }
+  .equity-delta .d-range {
+    color: var(--fg-2); font-family: inherit;
+    font-size: 12px; font-weight: 500;
+    margin-left: 4px;
+  }
+  .equity-delta.up   .d-abs, .equity-delta.up   .d-pct { color: var(--accent); }
+  .equity-delta.down .d-abs, .equity-delta.down .d-pct { color: var(--neg); }
+
+  .equity-ranges {
+    display: flex; gap: 4px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: 999px;
+    padding: 4px;
+  }
+  .equity-ranges button {
+    background: transparent; border: 0;
+    color: var(--fg-2);
+    font: 600 12px/1 var(--font-mono);
+    letter-spacing: 0.04em;
+    padding: 8px 12px; min-width: 38px; min-height: 32px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 120ms, background 120ms;
+  }
+  .equity-ranges button:hover { color: var(--fg-0); }
+  .equity-ranges button[aria-selected="true"] {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+  }
+
+  .equity-chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 240px;
+  }
+  #equityChart {
+    display: block; width: 100%; height: 100%;
+  }
+  .equity-tooltip {
+    position: absolute; top: 0; left: 0;
+    transform: translate(-50%, -100%);
+    background: var(--bg-2);
+    border: 1px solid var(--border-2);
+    border-radius: 8px;
+    padding: 6px 10px;
+    pointer-events: none;
+    white-space: nowrap;
+    font: 500 12px/1.3 var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    z-index: 2;
+  }
+  .equity-tooltip .t-price { color: var(--fg-0); font-weight: 700; }
+  .equity-tooltip .t-time  { color: var(--fg-2); font-size: 11px; margin-top: 2px; }
+
+  @media (max-width: 640px) {
+    .equity-card { padding: 18px 16px 14px; }
+    .equity-price { font-size: 26px; }
+    .equity-chart-wrap { height: 200px; }
+    .equity-ranges { width: 100%; justify-content: space-between; }
+    .equity-ranges button { flex: 1; min-width: 0; padding: 8px 4px; }
+  }
+</style>
 
 <div class="card">
   <h2>Open Positions</h2>
@@ -95,40 +210,326 @@
   {% else %}<div class="empty">No orders yet.</div>{% endif %}
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-  const data = {{ equity_curve_json | safe }};
-  if (data && data.length > 0) {
-    const ctx = document.getElementById('equityChart').getContext('2d');
-    new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: data.map(d => d.ts_utc),
-        datasets: [{
-          label: 'Equity ($)',
-          data: data.map(d => d.equity),
-          borderColor: '#58a6ff',
-          backgroundColor: 'rgba(88,166,255,0.1)',
-          tension: 0.15,
-          pointRadius: 0,
-          fill: true,
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { labels: { color: '#e6edf3' } } },
-        scales: {
-          x: { ticks: { color: '#8b949e', maxTicksLimit: 8 }, grid: { color: '#21262d' } },
-          y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }
-        }
-      }
-    });
-  } else {
-    document.getElementById('equityChart').replaceWith(
-      Object.assign(document.createElement('div'),
-        { className: 'empty', textContent: 'Not enough equity snapshots yet.' })
-    );
+(function () {
+  'use strict';
+
+  var raw = {{ equity_curve_json | safe }} || [];
+  // Normalize: each row { ts_utc, equity } → { t: ms, v: number }
+  var ALL = raw
+    .map(function (d) {
+      var t = Date.parse(d.ts_utc);
+      var v = Number(d.equity);
+      return (isFinite(t) && isFinite(v)) ? { t: t, v: v } : null;
+    })
+    .filter(Boolean)
+    .sort(function (a, b) { return a.t - b.t; });
+
+  var canvas    = document.getElementById('equityChart');
+  var priceEl   = document.getElementById('equityPrice');
+  var deltaEl   = document.getElementById('equityDelta');
+  var rangeMeta = document.getElementById('equityRange');
+  var tooltip   = document.getElementById('equityTooltip');
+  var ranges    = document.getElementById('equityRanges');
+
+  if (!ALL.length) {
+    var card = canvas.closest('.equity-card');
+    canvas.replaceWith(Object.assign(document.createElement('div'), {
+      className: 'empty', textContent: 'Not enough equity snapshots yet.'
+    }));
+    if (priceEl) priceEl.textContent = '$—';
+    return;
   }
+
+  // --- formatters ---
+  var dollarsFmt = new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  var dollarsSigned = function (n) {
+    var s = dollarsFmt.format(Math.abs(n));
+    return (n >= 0 ? '+' : '−') + s;
+  };
+  var pctFmt = function (n) {
+    return (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%';
+  };
+
+  function fmtTimeShort(ms, span) {
+    var d = new Date(ms);
+    if (span <= 86400000 * 2) {
+      // intraday → "Apr 3, 14:32"
+      return d.toLocaleString('en-US', {
+        month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+    }
+    if (span <= 86400000 * 365) {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }
+
+  // --- ranges ---
+  var DAY = 86400000;
+  var RANGE_MS = {
+    '1D': 1 * DAY, '1W': 7 * DAY, '1M': 30 * DAY,
+    '3M': 91 * DAY, '1Y': 365 * DAY, 'ALL': Infinity,
+  };
+  var currentRange = 'ALL';
+  var view = ALL.slice();
+
+  function selectRange(key) {
+    currentRange = key;
+    var span = RANGE_MS[key];
+    if (!isFinite(span)) {
+      view = ALL.slice();
+    } else {
+      var cutoff = ALL[ALL.length - 1].t - span;
+      view = ALL.filter(function (p) { return p.t >= cutoff; });
+      if (view.length < 2) {
+        // Fall back to enough points to draw a line.
+        view = ALL.slice(-Math.max(2, view.length));
+      }
+    }
+    [].forEach.call(ranges.querySelectorAll('button'), function (b) {
+      b.setAttribute('aria-selected', b.dataset.range === key ? 'true' : 'false');
+    });
+    rangeMeta.textContent = ({
+      '1D': 'past 24 hours', '1W': 'past week', '1M': 'past month',
+      '3M': 'past 3 months', '1Y': 'past year', 'ALL': 'since deployment',
+    })[key];
+    updateHeader(view[view.length - 1].v);
+    draw();
+  }
+
+  function updateHeader(currentValue) {
+    if (!view.length) return;
+    var first = view[0].v;
+    var diff = currentValue - first;
+    var pct = first !== 0 ? (diff / first) * 100 : 0;
+    var up = diff >= 0;
+    priceEl.textContent = dollarsFmt.format(currentValue);
+    deltaEl.classList.toggle('up', up);
+    deltaEl.classList.toggle('down', !up);
+    deltaEl.querySelector('.d-abs').textContent = dollarsSigned(diff);
+    deltaEl.querySelector('.d-pct').textContent = '(' + pctFmt(pct) + ')';
+  }
+
+  // --- drawing ---
+  var dpr = Math.max(1, window.devicePixelRatio || 1);
+  var W = 0, H = 0;
+  var pad = { l: 8, r: 8, t: 14, b: 14 };
+  var hover = null; // { x, y, idx }
+
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    W = Math.max(1, Math.floor(rect.width));
+    H = Math.max(1, Math.floor(rect.height));
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function getColors() {
+    var s = getComputedStyle(document.documentElement);
+    return {
+      up:     (s.getPropertyValue('--accent') || '#4ade80').trim(),
+      down:   (s.getPropertyValue('--neg')    || '#f87171').trim(),
+      grid:   (s.getPropertyValue('--border-1') || '#1a2a22').trim(),
+      muted:  (s.getPropertyValue('--fg-2')   || '#6f8479').trim(),
+      bg:     (s.getPropertyValue('--bg-1')   || '#0f1c17').trim(),
+    };
+  }
+
+  function project(points) {
+    var minT = points[0].t, maxT = points[points.length - 1].t;
+    var minV = Infinity, maxV = -Infinity;
+    for (var i = 0; i < points.length; i++) {
+      if (points[i].v < minV) minV = points[i].v;
+      if (points[i].v > maxV) maxV = points[i].v;
+    }
+    // Add a touch of padding so the line never kisses the top/bottom.
+    var vPad = (maxV - minV) * 0.08 || Math.max(1, Math.abs(maxV) * 0.005);
+    minV -= vPad; maxV += vPad;
+
+    var spanT = (maxT - minT) || 1;
+    var spanV = (maxV - minV) || 1;
+    var w = W - pad.l - pad.r;
+    var h = H - pad.t - pad.b;
+    return {
+      minT: minT, maxT: maxT, minV: minV, maxV: maxV,
+      spanT: spanT, spanV: spanV,
+      x: function (t) { return pad.l + ((t - minT) / spanT) * w; },
+      y: function (v) { return pad.t + (1 - (v - minV) / spanV) * h; },
+    };
+  }
+
+  function smoothPath(ctx, pts) {
+    if (!pts.length) return;
+    ctx.moveTo(pts[0].x, pts[0].y);
+    if (pts.length === 1) return;
+    if (pts.length === 2) { ctx.lineTo(pts[1].x, pts[1].y); return; }
+    // Catmull–Rom → Bezier, mild smoothing for the Robinhood feel.
+    for (var i = 0; i < pts.length - 1; i++) {
+      var p0 = pts[i - 1] || pts[i];
+      var p1 = pts[i];
+      var p2 = pts[i + 1];
+      var p3 = pts[i + 2] || p2;
+      var t = 0.18; // tension; smaller = looser smoothing
+      var c1x = p1.x + (p2.x - p0.x) * t;
+      var c1y = p1.y + (p2.y - p0.y) * t;
+      var c2x = p2.x - (p3.x - p1.x) * t;
+      var c2y = p2.y - (p3.y - p1.y) * t;
+      ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2.x, p2.y);
+    }
+  }
+
+  function draw() {
+    if (!view.length) return;
+    resize();
+    var ctx = canvas.getContext('2d');
+    var colors = getColors();
+    ctx.clearRect(0, 0, W, H);
+
+    var p = project(view);
+    var first = view[0].v;
+    var last = view[view.length - 1].v;
+    var up = last >= first;
+    var lineColor = up ? colors.up : colors.down;
+
+    var pts = view.map(function (d) { return { x: p.x(d.t), y: p.y(d.v) }; });
+
+    // Baseline (start value) — subtle dashed reference.
+    var baseY = p.y(first);
+    ctx.save();
+    ctx.strokeStyle = colors.grid;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, baseY);
+    ctx.lineTo(W - pad.r, baseY);
+    ctx.stroke();
+    ctx.restore();
+
+    // Filled gradient under the line — Robinhood signature.
+    var grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
+    grad.addColorStop(0, hexWithAlpha(lineColor, 0.28));
+    grad.addColorStop(1, hexWithAlpha(lineColor, 0.00));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, H - pad.b);
+    smoothPath(ctx, pts);
+    ctx.lineTo(pts[pts.length - 1].x, H - pad.b);
+    ctx.closePath();
+    ctx.fill();
+
+    // The line itself.
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = lineColor; ctx.lineWidth = 2;
+    ctx.beginPath();
+    smoothPath(ctx, pts);
+    ctx.stroke();
+
+    // Hover crosshair + dot + tooltip.
+    if (hover && hover.idx != null) {
+      var hp = pts[hover.idx];
+      var hv = view[hover.idx];
+      ctx.save();
+      ctx.strokeStyle = colors.muted;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(hp.x, pad.t);
+      ctx.lineTo(hp.x, H - pad.b);
+      ctx.stroke();
+      ctx.restore();
+
+      // Dot
+      ctx.fillStyle = colors.bg;
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(hp.x, hp.y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+      // Tooltip
+      tooltip.hidden = false;
+      tooltip.querySelector('.t-price').textContent = dollarsFmt.format(hv.v);
+      tooltip.querySelector('.t-time').textContent = fmtTimeShort(hv.t, p.spanT);
+      // Keep within bounds
+      var tipX = clamp(hp.x, 56, W - 56);
+      var tipY = Math.max(28, hp.y - 12);
+      tooltip.style.left = tipX + 'px';
+      tooltip.style.top = tipY + 'px';
+    } else {
+      tooltip.hidden = true;
+    }
+  }
+
+  function clamp(n, lo, hi) { return n < lo ? lo : (n > hi ? hi : n); }
+  function hexWithAlpha(hex, a) {
+    // Accept #rgb / #rrggbb / rgb(...). Fallback: use color-mix at runtime via canvas.
+    var c = hex.trim();
+    if (c.charAt(0) === '#') {
+      if (c.length === 4) c = '#' + c[1]+c[1] + c[2]+c[2] + c[3]+c[3];
+      var r = parseInt(c.slice(1,3),16), g = parseInt(c.slice(3,5),16), b = parseInt(c.slice(5,7),16);
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+    }
+    if (c.indexOf('rgb') === 0) {
+      return c.replace(/rgba?\(([^)]+)\)/, function (_, body) {
+        var parts = body.split(',').map(function(s){return s.trim();});
+        return 'rgba(' + parts[0] + ',' + parts[1] + ',' + parts[2] + ',' + a + ')';
+      });
+    }
+    return c;
+  }
+
+  // --- pointer interaction ---
+  function onPointer(e) {
+    if (!view.length) return;
+    var rect = canvas.getBoundingClientRect();
+    var x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    var p = project(view);
+    // Find nearest by x.
+    var w = W - pad.l - pad.r;
+    var ratio = clamp((x - pad.l) / w, 0, 1);
+    var targetT = p.minT + ratio * p.spanT;
+    var lo = 0, hi = view.length - 1;
+    while (lo < hi) {
+      var mid = (lo + hi) >> 1;
+      if (view[mid].t < targetT) lo = mid + 1; else hi = mid;
+    }
+    var idx = lo;
+    if (idx > 0 && Math.abs(view[idx-1].t - targetT) < Math.abs(view[idx].t - targetT)) idx -= 1;
+    hover = { idx: idx };
+    updateHeader(view[idx].v);
+    draw();
+  }
+  function onLeave() {
+    hover = null;
+    updateHeader(view[view.length - 1].v);
+    draw();
+  }
+  canvas.addEventListener('mousemove', onPointer);
+  canvas.addEventListener('mouseleave', onLeave);
+  canvas.addEventListener('touchstart', onPointer, { passive: true });
+  canvas.addEventListener('touchmove',  onPointer, { passive: true });
+  canvas.addEventListener('touchend',   onLeave);
+
+  // Range buttons
+  ranges.addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-range]');
+    if (!btn) return;
+    selectRange(btn.dataset.range);
+  });
+
+  // Initial paint + responsive redraw
+  selectRange('ALL');
+  var resizeRaf = null;
+  window.addEventListener('resize', function () {
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(draw);
+  });
+})();
 </script>
 
 {% endblock %}
