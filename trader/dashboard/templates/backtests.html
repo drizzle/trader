@@ -3,61 +3,134 @@
 {% block heading %}Backtests{% endblock %}
 {% block content %}
 
-<div class="card">
-  <h2>Run a backtest</h2>
-  <p style="color:#8b949e; font-size:0.85rem; margin:0 0 12px">
-    Backtests are run from the command line (not the UI, to avoid long-running web requests).
-    SSH to the droplet and run:
-  </p>
-  <pre style="padding:12px; background:#0d1117; border:1px solid #30363d;
-              border-radius:6px; font-size:0.8rem; color:#c9d1d9; overflow-x:auto; margin:0">cd /opt/trader
-sudo -u trader .venv/bin/python -m trader backtest --strategy {{ cfg.strategy.name }} --start 2018-01-01 --end 2024-12-31</pre>
-  <p style="color:#8b949e; font-size:0.85rem; margin:12px 0 0">
-    The HTML report will appear in this list within a few seconds.
-  </p>
-</div>
+{% if flash_msg %}
+  <div class="card" style="border-left:3px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-1));">
+    <p style="margin:0; color:var(--fg-0); font-size:0.9rem">{{ flash_msg }}</p>
+  </div>
+{% endif %}
+{% if flash_err %}
+  <div class="card" style="border-left:3px solid var(--neg); background: color-mix(in srgb, var(--neg) 10%, var(--bg-1));">
+    <p style="margin:0; color:var(--fg-0); font-size:0.9rem">{{ flash_err }}</p>
+  </div>
+{% endif %}
 
 <div class="card">
-  <h2>Composer Comparison</h2>
-  <p style="color:#8b949e; font-size:0.85rem; margin:0 0 12px">
-    To compare against Composer, match its cash, slippage, and raw strategy weights.
+  <h2>Launch backtest</h2>
+  <p class="muted" style="font-size:0.9rem; margin:0 0 14px">
+    Runs in the background on the droplet. The HTML report appears in <em>Saved Reports</em> below when finished
+    — usually within 5–30 seconds depending on years &amp; universe size.
   </p>
-  <pre style="padding:12px; background:#0d1117; border:1px solid #30363d;
-              border-radius:6px; font-size:0.8rem; color:#c9d1d9; overflow-x:auto; margin:0">cd /opt/trader
-sudo -u trader .venv/bin/python -m trader backtest --strategy yypt_tqqq_rsi --start 2024-01-24 --end 2026-05-01 --cash 10000 --slippage-bps 1 --no-risk</pre>
-</div>
-
-<div class="card">
-  <h2>Strategy Examples</h2>
-  <table>
-    <thead><tr><th>Strategy</th><th>Command</th></tr></thead>
-    <tbody>
-    {% for strategy in available_strategies %}
-      <tr>
-        <td><code>{{ strategy.name }}</code></td>
-        <td><code>sudo -u trader .venv/bin/python -m trader backtest --strategy {{ strategy.name }} --start 2018-01-01 --end 2024-12-31</code></td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <form method="post" action="/backtests/run" class="bt-form">
+    <label class="bt-field">
+      <span>Strategy</span>
+      <select name="strategy" required>
+        {% for s in available_strategies %}
+          <option value="{{ s.name }}" {% if s.active %}selected{% endif %}>
+            {{ s.name }}{% if s.active %} · active{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="bt-field">
+      <span>Lookback</span>
+      <select name="years" required>
+        <option value="1">1 year</option>
+        <option value="2">2 years</option>
+        <option value="5" selected>5 years</option>
+        <option value="10">10 years</option>
+      </select>
+    </label>
+    <button type="submit" class="bt-launch" {% if read_only %}disabled title="Dashboard is read-only"{% endif %}>
+      Launch backtest
+    </button>
+  </form>
+  {% if running_jobs %}
+    <div class="bt-running">
+      <span class="dot"></span>
+      <span>{{ running_jobs|length }} backtest{% if running_jobs|length != 1 %}s{% endif %} running…</span>
+    </div>
+  {% endif %}
 </div>
 
 <div class="card">
   <h2>Saved Reports ({{ reports|length }})</h2>
   {% if reports %}
-  <table>
-    <thead><tr><th>Report</th><th>Size</th><th>Modified</th></tr></thead>
-    <tbody>
-    {% for r in reports %}
-      <tr>
-        <td><a class="report" href="/backtests/{{ r.name }}" target="_blank">{{ r.name }}</a></td>
-        <td>{{ r.size_kb }} KB</td>
-        <td>{{ r.mtime | int | string }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<div class="empty">No backtest reports yet — run one from the CLI.</div>{% endif %}
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Report</th><th>Size</th><th>Modified</th></tr></thead>
+      <tbody>
+      {% for r in reports %}
+        <tr>
+          <td><a class="report" href="/backtests/{{ r.name }}">{{ r.name }}</a></td>
+          <td>{{ r.size_kb }} KB</td>
+          <td>{{ r.mtime_label }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty">No backtest reports yet — launch one above.</div>{% endif %}
 </div>
+
+<details class="card" style="padding-top:14px">
+  <summary style="cursor:pointer; color:var(--fg-1); font-weight:600; font-size:0.95rem">CLI equivalents (advanced)</summary>
+  <p class="muted" style="font-size:0.85rem; margin:14px 0 8px">
+    For custom date ranges, cash, slippage, or <code>--no-risk</code> comparisons, run from the droplet:
+  </p>
+  <pre class="code-block">cd /opt/trader
+sudo -u trader .venv/bin/python -m trader backtest --strategy {{ cfg.strategy.name }} --start 2018-01-01 --end 2024-12-31</pre>
+  <p class="muted" style="font-size:0.85rem; margin:12px 0 8px">Composer-comparable run:</p>
+  <pre class="code-block">sudo -u trader .venv/bin/python -m trader backtest --strategy yypt_tqqq_rsi --start 2024-01-24 --end 2026-05-01 --cash 10000 --slippage-bps 1 --no-risk</pre>
+</details>
+
+<style>
+  .bt-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 12px;
+    align-items: end;
+  }
+  .bt-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .bt-field > span {
+    color: var(--fg-2); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+  }
+  .bt-field select {
+    background: var(--bg-2); color: var(--fg-0);
+    border: 1px solid var(--border-2); border-radius: var(--r-md);
+    padding: 10px 12px; font-size: 14px; min-height: 44px;
+    font-family: inherit;
+  }
+  .bt-field select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+  }
+  .bt-launch {
+    min-height: 44px; padding: 10px 18px;
+    font-weight: 600; font-size: 14px;
+    background: var(--accent); color: #07140d;
+    border: 0; border-radius: var(--r-md); cursor: pointer;
+    white-space: nowrap;
+  }
+  .bt-launch:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, white); }
+  .bt-launch:disabled { opacity: 0.45; cursor: not-allowed; }
+  .bt-running {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 12px; padding: 10px 12px;
+    background: color-mix(in srgb, var(--warn) 10%, var(--bg-1));
+    border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--border-1));
+    border-radius: var(--r-md);
+    color: var(--fg-1); font-size: 13px;
+  }
+  .bt-running .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--warn); animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @media (max-width: 640px) {
+    .bt-form { grid-template-columns: 1fr 1fr; }
+    .bt-launch { grid-column: 1 / -1; }
+  }
+</style>
 
 {% endblock %}

@@ -20,6 +20,9 @@ import json
 import resource
 import secrets
 import sqlite3
+import subprocess
+import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -412,6 +415,9 @@ def create_app(cfg: Config) -> FastAPI:
     # Templates live next to this file.
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
+    # Track in-flight backtest jobs so the UI can show a "running" indicator.
+    _running_backtests: set[str] = set()
+
     # We instantiate ExecutionClient lazily on each request because a brief
     # Alpaca outage shouldn't bring the dashboard down at startup.
     def _execution() -> ExecutionClient | None:
@@ -504,7 +510,11 @@ def create_app(cfg: Config) -> FastAPI:
             ],
         })
 
-    @app.get("/", response_class=HTMLResponse)
+    @app.get("/")
+    def root_redirect():
+        return RedirectResponse(url="/trades", status_code=307)
+
+    @app.get("/strategy", response_class=HTMLResponse)
     def strategy_view(request: Request):
         view_started = time.perf_counter()
         signals = _read_signals(cfg.db_path, limit=20)
@@ -713,14 +723,22 @@ def create_app(cfg: Config) -> FastAPI:
         return RedirectResponse(url="/risk", status_code=303)
 
     @app.get("/backtests", response_class=HTMLResponse)
-    def backtests_view(request: Request):
+    def backtests_view(request: Request, msg: str = "", err: str = ""):
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
         bt_dir = cfg.data_dir / "backtests"
         bt_dir.mkdir(parents=True, exist_ok=True)
+
+        def _fmt_mtime(ts: float) -> str:
+            try:
+                return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            except Exception:
+                return str(int(ts))
+
         reports = sorted(
             (
                 {"name": p.name, "size_kb": p.stat().st_size // 1024,
-                 "mtime": p.stat().st_mtime}
+                 "mtime": p.stat().st_mtime,
+                 "mtime_label": _fmt_mtime(p.stat().st_mtime)}
                 for p in bt_dir.glob("*.html")
             ),
             key=lambda r: r["mtime"], reverse=True,
@@ -731,19 +749,115 @@ def create_app(cfg: Config) -> FastAPI:
             "kill_engaged": kill_engaged,
             "reports": list(reports),
             "available_strategies": _available_strategies(cfg.strategy.name),
+            "running_jobs": list(_running_backtests),
             "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
+            "flash_msg": msg,
+            "flash_err": err,
         })
 
+    @app.post("/backtests/run")
+    async def backtests_run(request: Request):
+        if read_only:
+            return RedirectResponse(url="/backtests?err=Dashboard+is+read-only", status_code=303)
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+        strategy = (form.get("strategy", [""])[0] or "").strip()
+        years_raw = (form.get("years", [""])[0] or "").strip()
+        valid_strategies = {s["name"] for s in _available_strategies(cfg.strategy.name)}
+        if strategy not in valid_strategies:
+            return RedirectResponse(url="/backtests?err=Unknown+strategy", status_code=303)
+        try:
+            years = int(years_raw)
+        except ValueError:
+            return RedirectResponse(url="/backtests?err=Invalid+lookback", status_code=303)
+        if years not in (1, 2, 5, 10):
+            return RedirectResponse(url="/backtests?err=Lookback+must+be+1%2C+2%2C+5+or+10+years", status_code=303)
+
+        end = datetime.now(timezone.utc).date()
+        start = end.replace(year=end.year - years)
+        job_id = f"{strategy}-{years}y-{int(time.time())}"
+        cmd = [
+            sys.executable, "-m", "trader", "backtest",
+            "--strategy", strategy,
+            "--start", start.isoformat(),
+            "--end", end.isoformat(),
+        ]
+
+        def _run():
+            _running_backtests.add(job_id)
+            try:
+                subprocess.run(cmd, cwd=str(Path(__file__).resolve().parents[2]),
+                               check=False, capture_output=True, timeout=15 * 60)
+            except Exception:
+                pass
+            finally:
+                _running_backtests.discard(job_id)
+
+        threading.Thread(target=_run, daemon=True).start()
+        return RedirectResponse(
+            url=f"/backtests?msg=Launched+{strategy}+%C2%B7+{years}y+%E2%80%94+report+will+appear+below+when+complete",
+            status_code=303,
+        )
+
     @app.get("/backtests/{name}")
-    def backtest_file(name: str):
+    def backtest_file(name: str, raw: int = 0):
         # Whitelist: only files directly under data/backtests with .html extension.
         if "/" in name or "\\" in name or not name.endswith(".html"):
             return JSONResponse({"error": "invalid name"}, status_code=400)
         path = cfg.data_dir / "backtests" / name
         if not path.exists() or not path.is_file():
             return JSONResponse({"error": "not found"}, status_code=404)
-        return FileResponse(path, media_type="text/html")
+        # raw=1 serves the report directly (used inside the iframe).
+        if raw:
+            return FileResponse(path, media_type="text/html")
+        # Default: wrap report in a frame with a "Back to Dashboard" header,
+        # so users (especially on mobile) can navigate home from a report.
+        wrapper = f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{name} · Backtest</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {{
+    --bg-0: #0a1410; --bg-1: #0f1c17; --fg-0: #e6f0ea; --fg-1: #b8c7be;
+    --fg-2: #6f8479; --accent: #4ade80; --border-1: #1a2a22;
+  }}
+  * {{ box-sizing: border-box; }}
+  html, body {{ margin: 0; padding: 0; background: var(--bg-0); color: var(--fg-0);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; height: 100%; }}
+  .bar {{
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 18px; background: var(--bg-1);
+    border-bottom: 1px solid var(--border-1);
+    position: sticky; top: 0; z-index: 10;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  }}
+  .bar a.back {{
+    color: var(--accent); text-decoration: none; font-weight: 600;
+    font-size: 14px; display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    min-height: 36px;
+  }}
+  .bar a.back:hover {{ background: color-mix(in srgb, var(--accent) 14%, transparent); }}
+  .bar .name {{ color: var(--fg-1); font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }}
+  .bar a.open {{ color: var(--fg-2); text-decoration: none; font-size: 13px; padding: 6px 10px; }}
+  .bar a.open:hover {{ color: var(--fg-0); }}
+  .frame {{ display: block; width: 100%; height: calc(100vh - 61px); border: 0; background: white; }}
+</style>
+</head><body>
+<div class="bar">
+  <a class="back" href="/backtests">← Backtests</a>
+  <span class="name">{name}</span>
+  <a class="open" href="/backtests/{name}?raw=1" target="_blank" rel="noopener">Open raw ↗</a>
+</div>
+<iframe class="frame" src="/backtests/{name}?raw=1" title="{name}"></iframe>
+</body></html>"""
+        return HTMLResponse(wrapper)
 
     @app.get("/healthz")
     def healthz():
