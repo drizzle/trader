@@ -11,10 +11,25 @@
   </p>
   <pre style="padding:12px; background:#0d1117; border:1px solid #30363d;
               border-radius:6px; font-size:0.8rem; color:#c9d1d9; overflow-x:auto; margin:0">cd /opt/trader
-sudo -u trader .venv/bin/python -m trader backtest --start 2018-01-01 --end 2024-12-31</pre>
+sudo -u trader .venv/bin/python -m trader backtest --strategy {{ cfg.strategy.name }} --start 2018-01-01 --end 2024-12-31</pre>
   <p style="color:#8b949e; font-size:0.85rem; margin:12px 0 0">
     The HTML report will appear in this list within a few seconds.
   </p>
+</div>
+
+<div class="card">
+  <h2>Strategy Examples</h2>
+  <table>
+    <thead><tr><th>Strategy</th><th>Command</th></tr></thead>
+    <tbody>
+    {% for strategy in available_strategies %}
+      <tr>
+        <td><code>{{ strategy.name }}</code></td>
+        <td><code>sudo -u trader .venv/bin/python -m trader backtest --strategy {{ strategy.name }} --start 2018-01-01 --end 2024-12-31</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
 </div>
 
 <div class="card">

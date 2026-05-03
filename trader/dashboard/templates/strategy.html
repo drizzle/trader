@@ -37,6 +37,31 @@
 </div>
 
 <div class="card">
+  <h2>Available Strategies</h2>
+  <table>
+    <thead><tr>
+      <th>Strategy</th><th>Class</th><th>Default Universe</th><th>Status</th>
+    </tr></thead>
+    <tbody>
+    {% for strategy in available_strategies %}
+      <tr>
+        <td><code>{{ strategy.name }}</code></td>
+        <td>{{ strategy.class_name }}</td>
+        <td>{{ strategy.universe | join(", ") if strategy.universe else "n/a" }}</td>
+        <td>
+          {% if strategy.active %}
+            <span class="pos">active</span>
+          {% else %}
+            available
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
   <h2>Recent Signals</h2>
   {% if signals %}
   <div class="scroll">

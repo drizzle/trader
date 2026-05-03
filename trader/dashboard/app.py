@@ -25,6 +25,7 @@ from fastapi.templating import Jinja2Templates
 from ..config import Config
 from ..execution import ExecutionClient
 from ..storage import Storage
+from ..strategy import STRATEGIES
 
 
 def _read_signals(db_path: Path, limit: int = 50) -> list[dict]:
@@ -63,6 +64,23 @@ def _read_equity_curve(db_path: Path) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def _available_strategies(active_name: str) -> list[dict]:
+    strategies = []
+    for name, strategy_cls in sorted(STRATEGIES.items()):
+        try:
+            strategy = strategy_cls()
+            universe = strategy.universe
+        except Exception:
+            universe = []
+        strategies.append({
+            "name": name,
+            "class_name": strategy_cls.__name__,
+            "universe": universe,
+            "active": name == active_name,
+        })
+    return strategies
+
+
 def create_app(cfg: Config) -> FastAPI:
     app = FastAPI(title="trader dashboard")
 
@@ -84,6 +102,7 @@ def create_app(cfg: Config) -> FastAPI:
         return templates.TemplateResponse(request, "strategy.html", {
             "active_tab": "strategy",
             "cfg": cfg,
+            "available_strategies": _available_strategies(cfg.strategy.name),
             "signals": signals,
             "kill_engaged": kill_engaged,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
@@ -222,6 +241,7 @@ def create_app(cfg: Config) -> FastAPI:
             "cfg": cfg,
             "kill_engaged": kill_engaged,
             "reports": list(reports),
+            "available_strategies": _available_strategies(cfg.strategy.name),
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
         })
 

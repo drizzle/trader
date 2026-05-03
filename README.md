@@ -179,19 +179,22 @@ Run a backtest against historical Alpaca bars. Same `Strategy.compute()` runs in
 
 **Locally:**
 ```bash
-python -m trader backtest --start 2018-01-01 --end 2024-12-31
+python -m trader backtest --strategy sma_crossover --start 2018-01-01 --end 2024-12-31
 # → writes data/backtests/sma_crossover_<timestamp>.html
 # Open in your browser to see equity curve, drawdown, metrics, trade log.
+
+python -m trader backtest --strategy yypt_tqqq_rsi --start 2018-01-01 --end 2024-12-31
+# → writes data/backtests/yypt_tqqq_rsi_<timestamp>.html
 ```
 
 **On the droplet:**
 ```bash
 cd /opt/trader
-sudo -u trader .venv/bin/python -m trader backtest --start 2018-01-01
+sudo -u trader .venv/bin/python -m trader backtest --strategy yypt_tqqq_rsi --start 2018-01-01
 # Reports go to /opt/trader/data/backtests/ and appear in the dashboard's Backtests tab.
 ```
 
-Useful flags: `--cash 50000`, `--slippage-bps 10`, `--commission 0.50`, `--lookback-days 3650`.
+Useful flags: `--strategy sma_crossover`, `--strategy yypt_tqqq_rsi`, `--cash 50000`, `--slippage-bps 10`, `--commission 0.50`, `--lookback-days 3650`.
 
 The HTML reports are fully self-contained (Plotly inlined) — you can email them, archive them, diff strategy variants over time.
 
