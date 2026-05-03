@@ -59,7 +59,9 @@ def _safe_b64_decode(b64_str: str) -> bytes | None:
 
 
 _APPLE_TOUCH_ICON_PNG = _safe_b64_decode(
-    "iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAACWklEQVR42u3doRWEQBBEQRI4geEEjqiIkNBwKALg/CkEj9c7W+IH0EzpZfiM30uq0uAjCGgJaAloCWgBLQEtAS0BLQEtoKXOQK/bJb0W0AIaaAEtAS0BLaCBFtBAC+j/pnmRbge0gAZaQAMtoIEW0AIaaAENtIAGWkBLQAtooAU00AIaaAEtAS2ggRbQQAtooAW0BLSABlpAAy2ggRbQEtACGmgBDbSATgC9H2dU9gLtwEADDTTQQAMNNNBAAw20vUA7MNBAAw000EADDTTQQANtL9BAA10JdBqgNHCt7wUaaKCBBhpooIEGGmiggQYaaKCBBhpooIEGGmiggQYaaKCBBhpooIFOrre9QAMNNNBAAw000EADbS/QDgw00EADDTTQQAMNNNBA2wu0AwMNNNBAAw000EADDTTQ9gINNNBAAw000EADDTTQQDuwvUADDTTQQAMNNNBAAw000A5sL9BAAw000EADDTTQQAMNtAPbCzTQQAMNNNBAAw000EAD7cD2Ag000EC3BdRPg4AGmiggQYaaKCBBhpooIEGGmiggQYaaKCBBhpooIEGGmiggQYa6GTQaYDSwFXbCzTQQAMNNNBAAw000PYC7cBAAw000EADDTTQQAMNtL1AOzDQQAMNdC3Q8tAM0AIaaAEtAS2ggRbQQAtooAW0BLSABlpAAy2ggRbQEtACGmgBDbSABlpAS0ALaKAFNNACGmgBLQEtoIEW0EALaKBVD7T0ZEALaKAFtAS0BLSABlpAA63+QEvJAS2gJaAloCWgBbQEtAS0BLQEtICWGu8HpCQRe+zufA4AAAAASUVORK5CYII="
+    # Clean 180x180 PNG with 'CC' rendered on dark background, accent blue.
+    # Generated programmatically from a 5x7 bitmap font — fully self-contained.
+    "iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAACnElEQVR42u3dwQnDMBQFQVUQyCW1pcK06eAiLKTVGLYAvT/HQMaY/L3en0vnNAqfQ2p77A6kBG7HUAK28ZWBbXAlUBtZGdiGVQa1QZVBbUhlUBtQGdSGUwq10ZQBbTBlUBtKKdRGUga0gZRCbRxlQBtGKdRGEdDSiqANohRqYwhoCWgJaAloAS3tD9oQSqE2goCWgJaAloAW0BLQEtAS0BLQAloCWgL67vu7tmiVY9kLaKCBdiCggXYgewHtQPYCGmh7AQ000A4ENNAOZC+gHcheQANtL6CBBtqBgAbagey1M+jdocx+n72eex/QQAPtQEAD7UD2AhpoewENNNBAAw20AwENtAPZC2iggQYaaKCBBhpoBwIaaKDtBXQle/n5KNBAAw000A4ENNAOZC+ggbYX0EALaKCBdiCggXYgewENtL2ABlpAAw20AwENtAPZC2ig7QU00AIaaKAdCGigHcheQANtL6CBFtBAA+1AQAPtQPYCGmh7AQ20gAYaaAeyF9AOZC+ggbYX0EAD7UBAA+1A9gLagewFNNBAAw000A4ENNAOZC+ggbYX0EADCzTQQDvQ0++zl79GBhpooIEGGmiggXYgoIEG2l5AAw000EADDTTQQDsQ0EADbS+ggQYaaKCBBhroE0HPfvjsdody0l5AAw20A9kLaAeyF9AOZC+ggQbagYAG2oHsBbQD2QtooO0FNNBAOxDQQDuQvYB2IHv1QEtAS0ALaAloCWgJaAloAS0BLQEtAS0BrTDo+zOEMpiBFtAS0BLQEtAC2iDqgIZaKcxAC2hpZdBQK4UZaOVAQ60UZqCVAw21UpihVg4z0MqBhlopzFArhxlq5TBDrRxmqJXDDLZykKFWEjPYykEGW0nIcCuJGHatgPYPtpsHmQE8ybgAAAAASUVORK5CYII="
 )
 
 
@@ -475,11 +477,11 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.get("/favicon.svg")
     def favicon():
+        # Simple CC mark — dark rounded square, blue letters. No nested boxes.
         return HTMLResponse(
             """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
-<rect width="180" height="180" rx="36" fill="#0d1117"/>
-<rect x="10" y="10" width="160" height="160" rx="30" fill="#161b22" stroke="#58a6ff" stroke-width="8"/>
-<text x="90" y="108" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="64" font-weight="800" fill="#e6edf3">CC</text>
+<rect width="180" height="180" rx="32" fill="#0e1116"/>
+<text x="90" y="118" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="92" font-weight="800" fill="#58a6ff" letter-spacing="-4">CC</text>
 </svg>""",
             media_type="image/svg+xml",
         )
