@@ -27,6 +27,41 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs
+from zoneinfo import ZoneInfo
+
+# All storage + order execution happens in UTC. The dashboard *displays* in
+# Pacific Time so it matches the user's wall clock. ZoneInfo automatically
+# handles PDT/PST transitions — same instant, correct local label.
+_PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
+
+
+def _to_pacific(value, fmt: str = "%Y-%m-%d %H:%M:%S %Z") -> str:
+    """Jinja filter: convert a UTC ISO string or datetime to Pacific Time.
+
+    Accepts:
+      - "2026-05-03T18:24:12+00:00" (ISO with offset)
+      - "2026-05-03T18:24:12Z"      (ISO with Z)
+      - "2026-05-03 18:24:12"       (naive — assumed UTC)
+      - datetime objects (naive assumed UTC)
+
+    Falsy / unparseable input returns "" so templates degrade gracefully.
+    Default format includes the tz abbreviation so the user sees PDT/PST
+    explicitly. Storage and order timestamps stay UTC.
+    """
+    if not value:
+        return ""
+    if isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00").replace(" ", "T"))
+        except ValueError:
+            return value  # not parseable — return as-is
+    elif isinstance(value, datetime):
+        dt = value
+    else:
+        return str(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_PACIFIC_TZ).strftime(fmt)
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -414,6 +449,9 @@ def create_app(cfg: Config) -> FastAPI:
 
     # Templates live next to this file.
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+    # Make `{{ ts | pacific }}` available everywhere. Storage stays in UTC;
+    # only the rendered display is converted.
+    templates.env.filters["pacific"] = _to_pacific
 
     # Track in-flight backtest jobs so the UI can show a "running" indicator.
     _running_backtests: set[str] = set()
@@ -727,13 +765,31 @@ def create_app(cfg: Config) -> FastAPI:
         ec = _execution()
         if ec is not None:
             try:
-                positions = list(ec.positions().values())
+                raw_positions = list(ec.positions().values())
                 account = ec.account()
-                positions = [
-                    {"symbol": p.symbol, "qty": p.qty,
-                     "market_value": p.market_value, "avg_entry_price": p.avg_entry_price}
-                    for p in positions
-                ]
+                # Per-unit market price = market_value / qty. Alpaca returns
+                # market_value as the live mark, so this is the current quote
+                # without an extra API call. Both unrealized P&L per unit
+                # ($ delta) and % delta are derived from there.
+                positions = []
+                for p in raw_positions:
+                    current_price = (p.market_value / p.qty) if p.qty else 0.0
+                    unrealized_per_unit = current_price - p.avg_entry_price
+                    cost_basis = p.avg_entry_price * p.qty
+                    unrealized_total = p.market_value - cost_basis
+                    unrealized_pct = (
+                        (unrealized_per_unit / p.avg_entry_price * 100)
+                        if p.avg_entry_price else 0.0
+                    )
+                    positions.append({
+                        "symbol": p.symbol,
+                        "qty": p.qty,
+                        "avg_entry_price": p.avg_entry_price,
+                        "current_price": current_price,
+                        "market_value": p.market_value,
+                        "unrealized_pl": unrealized_total,
+                        "unrealized_pl_pct": unrealized_pct,
+                    })
                 account_data = {"cash": account.cash, "equity": account.equity,
                                 "buying_power": account.buying_power}
             except Exception as e:
@@ -767,7 +823,7 @@ def create_app(cfg: Config) -> FastAPI:
             "pnl": pnl,
             "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
-            "page_generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "page_generated_at": _to_pacific(datetime.now(timezone.utc)),
             "latest_equity_ts": latest_equity_ts,
             "tick_interval_minutes": cfg.schedule.interval_minutes,
         })

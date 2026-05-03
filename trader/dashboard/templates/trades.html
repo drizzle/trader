@@ -11,7 +11,7 @@
   <div>
     Page loaded <span style="color:var(--fg-1)">{{ page_generated_at }}</span>
     {% if latest_equity_ts %}
-      · last equity tick <span style="color:var(--fg-1)">{{ latest_equity_ts[:19] }} UTC</span>
+      · last equity tick <span style="color:var(--fg-1)">{{ latest_equity_ts | pacific }}</span>
     {% endif %}
     · trader runs every {{ tick_interval_minutes }} min
   </div>
@@ -74,7 +74,7 @@
     <div class="stat">
       <div class="label">Period</div>
       <div class="value" style="font-size:0.85rem">
-        {{ pnl.first_ts[:10] }} → {{ pnl.last_ts[:10] }}
+        {{ pnl.first_ts | pacific("%Y-%m-%d") }} → {{ pnl.last_ts | pacific("%Y-%m-%d") }}
       </div>
     </div>
   </div>
@@ -205,13 +205,25 @@
   <h2>Open Positions</h2>
   {% if positions %}
   <table>
-    <thead><tr><th>Symbol</th><th>Qty</th><th>Avg Entry</th><th>Market Value</th></tr></thead>
+    <thead><tr>
+      <th>Symbol</th><th>Qty</th>
+      <th>Avg Entry</th><th>Mkt Price</th>
+      <th>Market Value</th><th>Unrealized P&amp;L</th>
+    </tr></thead>
     <tbody>
     {% for p in positions %}
       <tr>
-        <td>{{ p.symbol }}</td><td>{{ p.qty }}</td>
+        <td>{{ p.symbol }}</td>
+        <td>{{ p.qty }}</td>
         <td>${{ "{:,.2f}".format(p.avg_entry_price) }}</td>
+        <td>${{ "{:,.2f}".format(p.current_price) }}</td>
         <td>${{ "{:,.2f}".format(p.market_value) }}</td>
+        <td class="{{ 'pos' if p.unrealized_pl >= 0 else 'neg' }}">
+          {{ '+' if p.unrealized_pl >= 0 else '' }}${{ "{:,.2f}".format(p.unrealized_pl) }}
+          <span class="muted mini" style="margin-left:6px">
+            ({{ "%+.2f%%" | format(p.unrealized_pl_pct) }})
+          </span>
+        </td>
       </tr>
     {% endfor %}
     </tbody>
@@ -225,13 +237,13 @@
   <div class="scroll">
     <table>
       <thead><tr>
-        <th>Timestamp (UTC)</th><th>Symbol</th><th>Side</th><th>Qty</th>
+        <th>Timestamp (PT)</th><th>Symbol</th><th>Side</th><th>Qty</th>
         <th>Status</th><th>Filled</th><th>Avg Fill</th>
       </tr></thead>
       <tbody>
       {% for o in orders %}
         <tr>
-          <td>{{ o.ts_utc }}</td>
+          <td>{{ o.ts_utc | pacific }}</td>
           <td>{{ o.symbol }}</td>
           <td class="{{ 'pos' if o.side == 'buy' else 'neg' }}">{{ o.side|upper }}</td>
           <td>{{ o.qty }}</td>
@@ -292,17 +304,27 @@
 
   function fmtTimeShort(ms, span) {
     var d = new Date(ms);
+    // Force Pacific Time regardless of the viewer's browser locale, so the
+    // tooltip matches the rest of the dashboard. timeZoneName: 'short'
+    // appends "PDT"/"PST" automatically based on the date.
     if (span <= 86400000 * 2) {
-      // intraday → "Apr 3, 14:32"
       return d.toLocaleString('en-US', {
+        timeZone: 'America/Los_Angeles',
         month: 'short', day: 'numeric',
         hour: '2-digit', minute: '2-digit', hour12: false,
+        timeZoneName: 'short',
       });
     }
     if (span <= 86400000 * 365) {
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return d.toLocaleDateString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        month: 'short', day: 'numeric',
+      });
     }
-    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    return d.toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      month: 'short', year: 'numeric',
+    });
   }
 
   // --- ranges ---

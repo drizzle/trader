@@ -71,7 +71,11 @@ def _cmd_backtest(args: argparse.Namespace) -> int:
     logger.info(
         f"Fetching {args.lookback_days} days of bars for {strategy.universe}..."
     )
-    bars = data.daily_bars(strategy.universe, lookback_days=args.lookback_days)
+    # bars_for_universe routes BTC/USD-style symbols to the crypto endpoint
+    # and equity tickers to IEX. daily_bars (stock-only) returned empty for
+    # BTC, which is why the dashboard "Run backtest" button silently produced
+    # no report for btc_sma — the subprocess exited rc=1 before writing.
+    bars = data.bars_for_universe(strategy.universe, lookback_days=args.lookback_days)
     if not bars or all(df.empty for df in bars.values()):
         logger.error("No bars returned — check API keys and symbol list.")
         return 1
