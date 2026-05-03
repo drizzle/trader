@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
-from alpaca.data.enums import DataFeed
+from alpaca.data.enums import Adjustment, DataFeed
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
@@ -41,6 +41,7 @@ class DataClient:
             timeframe=TimeFrame.Day,
             start=start,
             end=end,
+            adjustment=Adjustment.ALL,
             feed=DataFeed.IEX,   # free tier; switch to DataFeed.SIP if you upgrade
         )
 

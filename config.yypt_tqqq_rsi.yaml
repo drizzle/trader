@@ -21,7 +21,10 @@ strategy:
     rsi_high:           80.0
     sma_long_window:    200
     sma_short_window:   20
-    target_allocation:  0.95
+    # Composer JSON's wt-cash-equal branch is 100% allocated to the selected asset.
+    # Use --no-risk in backtests to compare directly with Composer; live risk caps
+    # below can still reduce or reject exposure.
+    target_allocation:  1.0
 
 schedule:
   interval_minutes: 15

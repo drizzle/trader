@@ -18,6 +18,16 @@ sudo -u trader .venv/bin/python -m trader backtest --strategy {{ cfg.strategy.na
 </div>
 
 <div class="card">
+  <h2>Composer Comparison</h2>
+  <p style="color:#8b949e; font-size:0.85rem; margin:0 0 12px">
+    To compare against Composer, match its cash, slippage, and raw strategy weights.
+  </p>
+  <pre style="padding:12px; background:#0d1117; border:1px solid #30363d;
+              border-radius:6px; font-size:0.8rem; color:#c9d1d9; overflow-x:auto; margin:0">cd /opt/trader
+sudo -u trader .venv/bin/python -m trader backtest --strategy yypt_tqqq_rsi --start 2024-01-24 --end 2026-05-01 --cash 10000 --slippage-bps 1 --no-risk</pre>
+</div>
+
+<div class="card">
   <h2>Strategy Examples</h2>
   <table>
     <thead><tr><th>Strategy</th><th>Command</th></tr></thead>

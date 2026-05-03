@@ -166,14 +166,20 @@ def run_backtest(
             ts = ts.tz_convert(None)
         return ts
 
-    if start is not None:
-        common_index = common_index[common_index >= _coerce(start)]
-    if end is not None:
-        common_index = common_index[common_index <= _coerce(end)]
-    if len(common_index) < 2:
+    common_index = common_index.sort_values()
+    start_ts = _coerce(start) if start is not None else None
+    end_ts = _coerce(end) if end is not None else None
+
+    report_index = common_index
+    if start_ts is not None:
+        report_index = report_index[report_index >= start_ts]
+    if end_ts is not None:
+        report_index = report_index[report_index <= end_ts]
+    if len(report_index) < 1:
         raise ValueError("Date range too narrow after filtering")
 
-    # Restrict each symbol's DataFrame to the common date range, sorted ascending.
+    # Restrict each symbol's DataFrame to the shared range, but keep pre-start
+    # history so indicators can warm up before the requested report period.
     bars = {sym: df.loc[common_index].sort_index() for sym, df in bars.items()}
 
     cash = initial_cash
@@ -187,8 +193,10 @@ def run_backtest(
     #   1. Decisions are based on bars up to t-1 (no look-ahead).
     #   2. Orders fill at t's open + slippage.
     #   3. End-of-day equity uses t's close.
-    for i in range(1, len(common_index)):
-        date_t = common_index[i]
+    for date_t in report_index:
+        i = common_index.get_loc(date_t)
+        if i == 0:
+            continue
 
         # Slice history up to date_t-1 for the strategy.
         past_bars = {

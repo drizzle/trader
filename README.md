@@ -185,6 +185,9 @@ python -m trader backtest --strategy sma_crossover --start 2018-01-01 --end 2024
 
 python -m trader backtest --strategy yypt_tqqq_rsi --start 2018-01-01 --end 2024-12-31
 # → writes data/backtests/yypt_tqqq_rsi_<timestamp>.html
+
+# Composer-equivalent YYPT comparison:
+python -m trader backtest --strategy yypt_tqqq_rsi --start 2024-01-24 --end 2026-05-01 --cash 10000 --slippage-bps 1 --no-risk
 ```
 
 **On the droplet:**
@@ -194,7 +197,7 @@ sudo -u trader .venv/bin/python -m trader backtest --strategy yypt_tqqq_rsi --st
 # Reports go to /opt/trader/data/backtests/ and appear in the dashboard's Backtests tab.
 ```
 
-Useful flags: `--strategy sma_crossover`, `--strategy yypt_tqqq_rsi`, `--cash 50000`, `--slippage-bps 10`, `--commission 0.50`, `--lookback-days 3650`.
+Useful flags: `--strategy sma_crossover`, `--strategy yypt_tqqq_rsi`, `--no-risk`, `--cash 50000`, `--slippage-bps 10`, `--commission 0.50`, `--lookback-days 3650`.
 
 The HTML reports are fully self-contained (Plotly inlined) — you can email them, archive them, diff strategy variants over time.
 

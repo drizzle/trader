@@ -12,8 +12,10 @@ import pandas as pd
 import pytest
 
 from trader.config import RiskConfig
+from trader.backtest import run_backtest
 from trader.risk import RiskCheck
 from trader.storage import Storage
+from trader.strategy.base import Signal, Strategy
 from trader.strategy.sma_crossover import SmaCrossoverStrategy
 from trader.strategy import yypt_tqqq_rsi
 from trader.strategy.yypt_tqqq_rsi import YyptTqqqRsiStrategy
@@ -119,6 +121,33 @@ def test_yypt_strategy_uses_latest_supplied_bar_as_current_price(monkeypatch):
 
     assert targets["TQQQ"] == pytest.approx(1.0)
     assert targets["SHV"] == pytest.approx(0.0)
+
+
+class _WarmupStrategy(Strategy):
+    name = "warmup"
+
+    @property
+    def universe(self) -> list[str]:
+        return ["SPY"]
+
+    def compute(self, bars: dict[str, pd.DataFrame]) -> list[Signal]:
+        target = 1.0 if len(bars["SPY"]) >= 5 else 0.0
+        return [Signal("SPY", target, f"history={len(bars['SPY'])}")]
+
+
+def test_backtest_uses_pre_start_history_for_indicator_warmup():
+    bars = {"SPY": _bars_from_closes([100.0] * 10)}
+
+    result = run_backtest(
+        strategy=_WarmupStrategy(),
+        bars=bars,
+        initial_cash=10_000,
+        start="2024-01-08",
+    )
+
+    assert result.start == bars["SPY"].index[5]
+    assert result.trades[0].timestamp == bars["SPY"].index[5]
+    assert result.trades[0].rationale == "history=5"
 
 
 def test_risk_position_size_limit():

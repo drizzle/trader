@@ -42,7 +42,7 @@ def _cmd_backtest(args: argparse.Namespace) -> int:
     from .reports import render_report
     from .strategy import STRATEGIES, build_strategy
 
-    cfg = load_config(args.config)
+    cfg = load_config(_strategy_config_path(args.config, args.strategy))
     logger.remove()
     logger.add(sys.stderr, level=cfg.log_level)
 

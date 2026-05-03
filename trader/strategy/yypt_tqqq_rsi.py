@@ -44,7 +44,7 @@ class YyptTqqqRsiStrategy(Strategy):
         rsi_high: float = 80.0,
         sma_long_window: int = 200,
         sma_short_window: int = 20,
-        target_allocation: float = 0.95,
+        target_allocation: float = 1.0,
     ):
         if not (0 < rsi_low < rsi_high < 100):
             raise ValueError("rsi_low must be < rsi_high and both in (0,100)")
