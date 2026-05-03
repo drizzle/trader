@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from .base import Signal, Strategy
+from .btc_sma import BtcSmaStrategy
 from .sma_crossover import SmaCrossoverStrategy
 from .yypt_tqqq_rsi import YyptTqqqRsiStrategy
 
@@ -9,6 +10,7 @@ from .yypt_tqqq_rsi import YyptTqqqRsiStrategy
 STRATEGIES: dict[str, type[Strategy]] = {
     "sma_crossover":   SmaCrossoverStrategy,
     "yypt_tqqq_rsi":   YyptTqqqRsiStrategy,
+    "btc_sma":         BtcSmaStrategy,
 }
 
 

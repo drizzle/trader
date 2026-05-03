@@ -28,6 +28,12 @@ class Strategy(ABC):
 
     name: str = "unnamed"
 
+    # Set to True for strategies that trade crypto (BTC/USD, ETH/USD, etc.).
+    # The runtime uses this flag to: (a) fetch bars from the crypto data API,
+    # (b) skip the equity-market-hours check (crypto trades 24/7), (c) allow
+    # fractional quantities, (d) submit orders with TimeInForce.GTC.
+    is_crypto: bool = False
+
     @property
     @abstractmethod
     def universe(self) -> list[str]:

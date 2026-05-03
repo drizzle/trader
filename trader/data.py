@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from alpaca.data.enums import Adjustment, DataFeed
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest
+from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
+from alpaca.data.requests import CryptoBarsRequest, StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from loguru import logger
 
@@ -23,6 +23,8 @@ class DataClient:
     def __init__(self, config: AlpacaConfig):
         # Data API uses the same keys regardless of paper vs live.
         self._client = StockHistoricalDataClient(config.api_key, config.secret_key)
+        # Crypto endpoints are free and don't have the 15-minute IEX delay.
+        self._crypto_client = CryptoHistoricalDataClient(config.api_key, config.secret_key)
 
     def daily_bars(
         self, symbols: list[str], lookback_days: int = 365
@@ -51,6 +53,44 @@ class DataClient:
 
         if df.empty:
             logger.warning(f"No bars returned for {symbols}")
+            return {sym: pd.DataFrame() for sym in symbols}
+
+        out: dict[str, pd.DataFrame] = {}
+        for sym in symbols:
+            if sym in df.index.get_level_values(0):
+                out[sym] = df.xs(sym, level=0).copy()
+            else:
+                out[sym] = pd.DataFrame()
+                logger.warning(f"No bars for {sym}")
+        return out
+
+    def crypto_daily_bars(
+        self, symbols: list[str], lookback_days: int = 365
+    ) -> dict[str, pd.DataFrame]:
+        """Fetch daily OHLCV crypto bars (e.g. 'BTC/USD') over the lookback window.
+
+        Crypto trades 24/7, so no calendar padding is needed — we just walk
+        back `lookback_days` from now. The crypto endpoints aren't on the
+        15-minute IEX delay, so `end` is `now`.
+        """
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=lookback_days)
+
+        req = CryptoBarsRequest(
+            symbol_or_symbols=symbols,
+            timeframe=TimeFrame.Day,
+            start=start,
+            end=end,
+        )
+
+        logger.debug(
+            f"Fetching daily crypto bars for {symbols} from {start.date()} to {end.date()}"
+        )
+        bars = self._crypto_client.get_crypto_bars(req)
+        df = bars.df  # MultiIndex: (symbol, timestamp)
+
+        if df.empty:
+            logger.warning(f"No crypto bars returned for {symbols}")
             return {sym: pd.DataFrame() for sym in symbols}
 
         out: dict[str, pd.DataFrame] = {}
