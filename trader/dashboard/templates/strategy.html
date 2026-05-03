@@ -1,10 +1,52 @@
 {% extends "base.html" %}
-{% block title %}Strategy{% endblock %}
-{% block heading %}Strategy{% endblock %}
+{% block title %}System{% endblock %}
+{% block heading %}System{% endblock %}
 {% block content %}
 
 <div class="card">
-  <h2>Configuration</h2>
+  <h2>System Health</h2>
+  <div class="status-row">
+    <span class="status-pill {{ health.overall_status }}">
+      {% if health.overall_status == "ok" %}RUNNING{% elif health.overall_status == "warn" %}CHECK{% else %}ALERT{% endif %}
+    </span>
+    {% if health.flags %}
+      <div class="flag-list">
+        {% for flag in health.flags %}<span class="flag">{{ flag }}</span>{% endfor %}
+      </div>
+    {% else %}
+      <span class="muted">No active dashboard flags.</span>
+    {% endif %}
+  </div>
+  <div class="grid grid-3" style="margin-top:14px">
+    <div class="stat">
+      <div class="label">Alpaca API</div>
+      <div class="value {{ 'pos' if health.api_status == 'ok' else ('neg' if health.api_status == 'bad' else '') }}" style="font-size:1.05rem">{{ health.api_label }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Dashboard latency</div>
+      <div class="value" style="font-size:1.05rem">{{ "%.0f ms" | format(health.dashboard_latency_ms) }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Memory</div>
+      <div class="value" style="font-size:1.05rem">{{ "%.1f MB" | format(health.memory_mb) }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Droplet load</div>
+      <div class="value" style="font-size:1.05rem">{{ "%.2f" | format(health.load_1m) if health.load_1m is not none else "n/a" }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Latest signal</div>
+      <div class="value" style="font-size:1.05rem">{{ health.latest_signal_age }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Latest equity pull</div>
+      <div class="value" style="font-size:1.05rem">{{ health.latest_equity_age }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Deployed Strategy</h2>
   <div class="grid grid-3">
     <div class="stat">
       <div class="label">Strategy</div>
@@ -19,46 +61,79 @@
       <div class="value" style="font-size:1.05rem">{{ cfg.schedule.interval_minutes }} min</div>
     </div>
     <div class="stat">
-      <div class="label">Max position</div>
-      <div class="value" style="font-size:1.05rem">{{ "%.0f%%" | format(cfg.risk.max_position_pct * 100) }}</div>
+      <div class="label">Latest order</div>
+      <div class="value {{ 'neg' if health.order_status in ['rejected', 'canceled'] else '' }}" style="font-size:1.05rem">{{ health.order_status }}</div>
+      <div class="muted mini">{{ health.latest_order_age }}</div>
     </div>
     <div class="stat">
-      <div class="label">Daily loss cap</div>
-      <div class="value" style="font-size:1.05rem">{{ "%.1f%%" | format(cfg.risk.daily_loss_limit_pct * 100) }}</div>
+      <div class="label">Max position</div>
+      <div class="value" style="font-size:1.05rem">{{ "%.0f%%" | format(cfg.risk.max_position_pct * 100) }}</div>
     </div>
     <div class="stat">
       <div class="label">Cash buffer</div>
       <div class="value" style="font-size:1.05rem">{{ "%.0f%%" | format(cfg.risk.min_cash_buffer_pct * 100) }}</div>
     </div>
   </div>
-  <pre style="margin-top:16px; padding:12px; background:#0d1117; border:1px solid #30363d;
-              border-radius:6px; font-size:0.8rem; overflow-x:auto; color:#c9d1d9">{{
-    cfg.strategy.params | tojson(indent=2) }}</pre>
+  <pre class="code-block">{{ cfg.strategy.params | tojson(indent=2) }}</pre>
 </div>
 
 <div class="card">
-  <h2>Available Strategies</h2>
-  <table>
-    <thead><tr>
-      <th>Strategy</th><th>Class</th><th>Default Universe</th><th>Status</th>
-    </tr></thead>
-    <tbody>
+  <h2>Strategy Reference</h2>
+  <div class="strategy-tabs">
     {% for strategy in available_strategies %}
-      <tr>
-        <td><code>{{ strategy.name }}</code></td>
-        <td>{{ strategy.class_name }}</td>
-        <td>{{ strategy.universe | join(", ") if strategy.universe else "n/a" }}</td>
-        <td>
-          {% if strategy.active %}
-            <span class="pos">active</span>
-          {% else %}
-            available
-          {% endif %}
-        </td>
-      </tr>
+      <a href="/?strategy={{ strategy.name }}"
+         class="{% if strategy.name == strategy_details.name %}active{% endif %}">
+        {{ strategy.name }}{% if strategy.active %} · active{% endif %}
+      </a>
     {% endfor %}
-    </tbody>
-  </table>
+  </div>
+  <div class="grid grid-3" style="margin-top:14px">
+    <div class="stat">
+      <div class="label">Selected</div>
+      <div class="value" style="font-size:1.05rem">{{ strategy_details.name }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Class</div>
+      <div class="value" style="font-size:1.05rem">{{ strategy_details.class_name }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Default universe</div>
+      <div class="value" style="font-size:1.05rem">{{ strategy_details.universe | join(", ") if strategy_details.universe else "n/a" }}</div>
+    </div>
+  </div>
+  <pre class="logic-block">{{ strategy_details.logic }}</pre>
+  <pre class="code-block">{{ strategy_details.params | tojson(indent=2) }}</pre>
+</div>
+
+<div class="card">
+  <h2>Order &amp; Signal Status</h2>
+  {% if latest_signal or latest_order %}
+    <div class="grid grid-3">
+      <div class="stat">
+        <div class="label">Latest signal</div>
+        <div class="value" style="font-size:1.05rem">
+          {% if latest_signal %}{{ latest_signal.symbol }} {{ "%.0f%%" | format(latest_signal.target_pct * 100) }}{% else %}n/a{% endif %}
+        </div>
+        <div class="muted mini">{% if latest_signal %}{{ latest_signal.ts_utc }}{% endif %}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Latest order</div>
+        <div class="value" style="font-size:1.05rem">
+          {% if latest_order %}{{ latest_order.side }} {{ latest_order.qty }} {{ latest_order.symbol }}{% else %}n/a{% endif %}
+        </div>
+        <div class="muted mini">{% if latest_order %}{{ latest_order.status }} · {{ latest_order.ts_utc }}{% endif %}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Latest equity</div>
+        <div class="value" style="font-size:1.05rem">
+          {% if latest_equity %}${{ "{:,.2f}".format(latest_equity.equity) }}{% else %}n/a{% endif %}
+        </div>
+        <div class="muted mini">{% if latest_equity %}{{ latest_equity.ts_utc }}{% endif %}</div>
+      </div>
+    </div>
+  {% else %}
+    <div class="empty">No signals or orders yet.</div>
+  {% endif %}
 </div>
 
 <div class="card">

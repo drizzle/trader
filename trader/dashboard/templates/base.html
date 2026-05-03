@@ -44,6 +44,24 @@
   a.report:hover { text-decoration: underline; }
   .logout { color: #8b949e; font-size: 0.8rem; margin-left: 10px; text-decoration: none; }
   .logout:hover { color: #e6edf3; }
+  .muted { color: #8b949e; }
+  .mini { font-size: 0.78rem; margin-top: 6px; overflow-wrap: anywhere; }
+  .status-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .status-pill { border-radius: 999px; padding: 6px 10px; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.06em; }
+  .status-pill.ok { background: #238636; color: #ffffff; }
+  .status-pill.warn { background: #d29922; color: #0e1116; }
+  .status-pill.bad { background: #da3633; color: #ffffff; }
+  .flag-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .flag { background: #d2992233; border: 1px solid #d2992266; color: #f2cc60;
+          border-radius: 999px; padding: 5px 9px; font-size: 0.8rem; }
+  .strategy-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .strategy-tabs a { color: #8b949e; border: 1px solid #30363d; border-radius: 999px;
+                     padding: 7px 10px; text-decoration: none; font-size: 0.85rem; }
+  .strategy-tabs a.active { color: #0d1117; background: #58a6ff; border-color: #58a6ff; font-weight: 700; }
+  .code-block, .logic-block { margin-top: 14px; padding: 12px; background: #0d1117;
+                              border: 1px solid #30363d; border-radius: 6px;
+                              font-size: 0.82rem; overflow-x: auto; color: #c9d1d9; }
+  .logic-block { white-space: pre-wrap; line-height: 1.5; }
   @media (max-width: 700px) {
     body { font-size: 16px; }
     header { padding: 12px; align-items: flex-start; gap: 8px; }
@@ -66,6 +84,11 @@
     pre, code { overflow-wrap: anywhere; white-space: pre-wrap; }
     .empty { padding: 14px; font-size: 0.95rem; }
     .logout { font-size: 0.85rem; margin-left: 0; }
+    .status-row { align-items: flex-start; }
+    .flag-list { width: 100%; }
+    .strategy-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+    .strategy-tabs a { flex: 0 0 auto; font-size: 0.9rem; padding: 9px 11px; }
+    .code-block, .logic-block { font-size: 0.9rem; line-height: 1.45; }
   }
 </style>
 </head>

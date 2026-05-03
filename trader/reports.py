@@ -39,6 +39,21 @@ tr:hover td { background: #1c2128; }
 .trade-buy { color: #3fb950; }
 .trade-sell { color: #f85149; }
 .scroll { max-height: 480px; overflow-y: auto; }
+.chart-wrap { width: 100%; overflow-x: hidden; }
+@media (max-width: 700px) {
+  body { padding: 12px; font-size: 16px; }
+  h1 { font-size: 1.25rem; line-height: 1.25; }
+  .sub { font-size: 0.9rem; margin-bottom: 14px; }
+  .card { padding: 14px; margin-bottom: 14px; border-radius: 6px; }
+  .card h2 { font-size: 1.05rem; }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .metric { padding: 10px; min-width: 0; }
+  .metric .label { font-size: 0.7rem; }
+  .metric .value { font-size: 1.05rem; overflow-wrap: anywhere; }
+  table { display: block; overflow-x: auto; white-space: nowrap; font-size: 0.9rem; }
+  th, td { padding: 10px 8px; }
+  .scroll { max-height: none; overflow-x: auto; }
+}
 """
 
 
@@ -77,12 +92,17 @@ def _equity_chart(result: BacktestResult) -> str:
     fig.update_yaxes(title_text="%", row=2, col=1, gridcolor="#30363d")
     fig.update_xaxes(gridcolor="#30363d")
     fig.update_layout(
-        height=560, template="plotly_dark",
+        autosize=True, height=520, template="plotly_dark",
         paper_bgcolor="#161b22", plot_bgcolor="#161b22",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=40, r=20, t=40, b=40),
+        margin=dict(l=38, r=12, t=44, b=36),
+        font=dict(size=12),
     )
-    return fig.to_html(include_plotlyjs="inline", full_html=False, config={"displayModeBar": False})
+    return fig.to_html(
+        include_plotlyjs="inline",
+        full_html=False,
+        config={"displayModeBar": False, "responsive": True},
+    )
 
 
 def _trade_log_table(result: BacktestResult) -> str:
@@ -138,6 +158,7 @@ def render_report(result: BacktestResult, output_path: str | Path) -> Path:
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Backtest — {escape(result.strategy_name)}</title>
 <style>{_CSS}</style>
 </head>
@@ -155,7 +176,7 @@ def render_report(result: BacktestResult, output_path: str | Path) -> Path:
 
   <div class="card">
     <h2>Equity Curve & Drawdown</h2>
-    {_equity_chart(result)}
+    <div class="chart-wrap">{_equity_chart(result)}</div>
   </div>
 
   <div class="card">

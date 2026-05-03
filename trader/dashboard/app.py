@@ -1,22 +1,24 @@
 """FastAPI dashboard.
 
 Four views:
-  /            → strategy summary (latest signals, current target, kill-switch state)
+  /            → system health, strategy config, and strategy reference
   /trades      → positions + recent fills + equity curve since deployment
-  /risk        → all risk caps, current exposures vs limits, kill-switch ops
+  /risk        → all risk caps and current exposures vs limits
   /backtests   → list of HTML reports under data/backtests/
 
-Read-only (mostly — /risk has a kill-switch toggle). Binds to 127.0.0.1 by
-default — access via SSH tunnel:
+Read-only by default. Binds to 127.0.0.1 by default — access via SSH tunnel:
     ssh -L 8000:localhost:8000 root@<droplet-ip>
     open http://localhost:8000
 """
 from __future__ import annotations
 
 import os
+import inspect
 import json
+import resource
 import secrets
 import sqlite3
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -67,6 +69,15 @@ def _read_equity_curve(db_path: Path) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def _read_latest_row(db_path: Path, table: str) -> dict | None:
+    if table not in {"signals", "orders", "equity_snapshots"} or not db_path.exists():
+        return None
+    with sqlite3.connect(db_path) as c:
+        c.row_factory = sqlite3.Row
+        row = c.execute(f"SELECT * FROM {table} ORDER BY id DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+
 def _available_strategies(active_name: str) -> list[dict]:
     strategies = []
     for name, strategy_cls in sorted(STRATEGIES.items()):
@@ -82,6 +93,74 @@ def _available_strategies(active_name: str) -> list[dict]:
             "active": name == active_name,
         })
     return strategies
+
+
+def _strategy_details(selected_name: str, active_name: str, active_params: dict) -> dict:
+    strategy_cls = STRATEGIES.get(selected_name) or STRATEGIES[active_name]
+    name = selected_name if selected_name in STRATEGIES else active_name
+    signature = inspect.signature(strategy_cls.__init__)
+    params = {}
+    for param_name, param in signature.parameters.items():
+        if param_name == "self":
+            continue
+        if param.default is not inspect.Parameter.empty:
+            params[param_name] = param.default
+    if name == active_name:
+        params.update(active_params)
+    try:
+        strategy = strategy_cls(**params)
+        universe = strategy.universe
+    except Exception:
+        universe = []
+    module = inspect.getmodule(strategy_cls)
+    logic = (
+        inspect.getdoc(strategy_cls)
+        or (inspect.getdoc(module) if module else None)
+        or "No strategy logic description available."
+    )
+    return {
+        "name": name,
+        "class_name": strategy_cls.__name__,
+        "universe": universe,
+        "params": params,
+        "logic": logic,
+        "active": name == active_name,
+    }
+
+
+def _parse_ts(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _age_label(ts: str | None) -> tuple[str, float | None]:
+    parsed = _parse_ts(ts)
+    if parsed is None:
+        return "n/a", None
+    seconds = max(0.0, (datetime.now(timezone.utc) - parsed).total_seconds())
+    if seconds < 90:
+        return f"{seconds:.0f}s ago", seconds
+    minutes = seconds / 60
+    if minutes < 90:
+        return f"{minutes:.0f}m ago", seconds
+    hours = minutes / 60
+    if hours < 48:
+        return f"{hours:.1f}h ago", seconds
+    return f"{hours / 24:.1f}d ago", seconds
+
+
+def _memory_mb() -> float:
+    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if usage > 10_000_000:
+        return usage / (1024 * 1024)
+    return usage / 1024
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -224,13 +303,86 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def strategy_view(request: Request):
+        view_started = time.perf_counter()
         signals = _read_signals(cfg.db_path, limit=20)
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
+        latest_signal = _read_latest_row(cfg.db_path, "signals")
+        latest_order = _read_latest_row(cfg.db_path, "orders")
+        latest_equity = _read_latest_row(cfg.db_path, "equity_snapshots")
+        latest_signal_age, latest_signal_age_seconds = _age_label(
+            latest_signal.get("ts_utc") if latest_signal else None
+        )
+        latest_order_age, _ = _age_label(latest_order.get("ts_utc") if latest_order else None)
+        latest_equity_age, latest_equity_age_seconds = _age_label(
+            latest_equity.get("ts_utc") if latest_equity else None
+        )
+
+        api_status = "warn"
+        api_label = "not checked"
+        api_latency_ms = None
+        ec = _execution()
+        if ec is not None:
+            api_started = time.perf_counter()
+            try:
+                ec.account()
+                api_latency_ms = (time.perf_counter() - api_started) * 1000
+                api_status = "ok" if api_latency_ms < 1500 else "warn"
+                api_label = f"{api_latency_ms:.0f} ms"
+            except Exception as e:
+                api_status = "bad"
+                api_label = str(e)
+        else:
+            api_status = "bad"
+            api_label = "Alpaca client unavailable"
+
+        load_1m = os.getloadavg()[0] if hasattr(os, "getloadavg") else None
+        memory_mb = _memory_mb()
+        order_status = (latest_order or {}).get("status", "n/a")
+        stale_signal = (
+            latest_signal_age_seconds is not None
+            and latest_signal_age_seconds > cfg.schedule.interval_minutes * 60 * 4
+        )
+        stale_equity = latest_equity_age_seconds is not None and latest_equity_age_seconds > 3600 * 8
+        flags = []
+        if kill_engaged:
+            flags.append("Kill switch is engaged")
+        if api_status == "bad":
+            flags.append("Alpaca API unavailable")
+        if stale_signal:
+            flags.append("Signal history looks stale")
+        if stale_equity:
+            flags.append("Equity snapshot looks stale")
+        if order_status in {"rejected", "canceled"}:
+            flags.append(f"Latest order is {order_status}")
+
+        overall_status = "ok" if not flags and api_status == "ok" else ("bad" if api_status == "bad" else "warn")
+        selected_strategy = request.query_params.get("strategy", cfg.strategy.name)
+        strategy_details = _strategy_details(
+            selected_strategy, cfg.strategy.name, cfg.strategy.params
+        )
+        dashboard_latency_ms = (time.perf_counter() - view_started) * 1000
         return templates.TemplateResponse(request, "strategy.html", {
             "active_tab": "strategy",
             "cfg": cfg,
             "available_strategies": _available_strategies(cfg.strategy.name),
+            "strategy_details": strategy_details,
             "signals": signals,
+            "latest_signal": latest_signal,
+            "latest_order": latest_order,
+            "latest_equity": latest_equity,
+            "health": {
+                "overall_status": overall_status,
+                "flags": flags,
+                "api_status": api_status,
+                "api_label": api_label,
+                "dashboard_latency_ms": dashboard_latency_ms,
+                "memory_mb": memory_mb,
+                "load_1m": load_1m,
+                "latest_signal_age": latest_signal_age,
+                "latest_order_age": latest_order_age,
+                "latest_equity_age": latest_equity_age,
+                "order_status": order_status,
+            },
             "kill_engaged": kill_engaged,
             "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
