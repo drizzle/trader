@@ -85,25 +85,68 @@
 
 <div class="card">
   <h2>Full Rationales</h2>
-  <div class="scroll">
-    <table>
-      <thead><tr><th>Symbol</th><th>Advisor</th><th>Action</th><th>Conf</th><th>Rationale</th></tr></thead>
-      <tbody>
-      {% for row in advisor.matrix_rows %}
-        {% for cell in row.cells %}
-          <tr>
-            <td><strong>{{ row.symbol }}</strong></td>
-            <td>{{ cell.advisor }}</td>
-            <td><span class="decision {{ cell.tone }}">{{ cell.action }}</span></td>
-            <td>{% if cell.confidence is not none %}{{ "%.0f%%"|format(cell.confidence * 100) }}{% else %}—{% endif %}</td>
-            <td style="white-space:normal; max-width:600px">{{ cell.rationale or "—" }}</td>
-          </tr>
-        {% endfor %}
+  <div class="rationale-list">
+    {% for row in advisor.matrix_rows %}
+      {% for cell in row.cells %}
+        <article class="rationale">
+          <header class="rationale-head">
+            <span class="rationale-symbol">{{ row.symbol }}</span>
+            <span class="rationale-advisor">{{ cell.advisor }}</span>
+            <span class="decision {{ cell.tone }}">{{ cell.action }}</span>
+            {% if cell.confidence is not none %}
+              <span class="rationale-conf">{{ "%.0f%%"|format(cell.confidence * 100) }}</span>
+            {% endif %}
+          </header>
+          <p class="rationale-body">{{ cell.rationale or "—" }}</p>
+        </article>
       {% endfor %}
-      </tbody>
-    </table>
+    {% endfor %}
   </div>
 </div>
+
+<style>
+  /* Stacked rationale cards — readable on mobile, no horizontal scroll. */
+  .rationale-list { display: flex; flex-direction: column; gap: 10px; }
+  .rationale {
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-left: 3px solid var(--border-3);
+    border-radius: var(--r-md);
+    padding: 12px 14px;
+  }
+  .rationale-head {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 10px; margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .rationale-symbol {
+    font-family: var(--font-mono); font-weight: 700;
+    color: var(--fg-0); font-size: 13px;
+  }
+  .rationale-advisor {
+    color: var(--fg-1); font-weight: 500;
+  }
+  .rationale-conf {
+    margin-left: auto;
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    color: var(--fg-2); font-size: 11px;
+  }
+  .rationale-body {
+    margin: 0; color: var(--fg-1);
+    font-size: 13px; line-height: 1.6;
+    white-space: normal; word-break: break-word;
+  }
+  /* Tone-tinted left border */
+  .rationale:has(.decision.buy)  { border-left-color: var(--accent); }
+  .rationale:has(.decision.sell) { border-left-color: var(--neg); }
+  .rationale:has(.decision.hold) { border-left-color: var(--warn); }
+  @media (max-width: 700px) {
+    .rationale { padding: 11px 12px; }
+    .rationale-head { gap: 8px; font-size: 11px; }
+    .rationale-conf { margin-left: 0; }
+    .rationale-body { font-size: 14px; line-height: 1.55; }
+  }
+</style>
 {% endif %}
 
 <div class="card">

@@ -98,30 +98,4 @@
   {% else %}<div class="empty">No open positions.</div>{% endif %}
 </div>
 
-<div class="card">
-  <h2>How risk gets enforced</h2>
-  <p style="color:#c9d1d9; font-size:0.85rem; line-height:1.55; margin:0">
-    Every signal returned by a strategy passes through the risk manager before
-    becoming an order. The pipeline is:
-  </p>
-  <ol style="color:#c9d1d9; font-size:0.85rem; line-height:1.7">
-    <li><strong>Daily loss check.</strong> If equity has fallen more than the cap from
-        start-of-day, the bot flattens all positions and engages the kill switch.</li>
-    <li><strong>Per-symbol cap.</strong> Each signal's <code>target_pct</code> is
-        compared against <code>max_position_pct</code>; rejected if it would breach.</li>
-    <li><strong>Cash buffer.</strong> Aggregate exposure across all signals is checked
-        against <code>1.0 − min_cash_buffer_pct</code>; the whole tick is rejected if
-        it would breach.</li>
-    <li><strong>Idempotent submit.</strong> Each order gets a unique
-        <code>client_order_id</code> stored in SQLite, so a crash mid-tick won't
-        double-submit on restart.</li>
-  </ol>
-  <p style="color:#8b949e; font-size:0.8rem; margin:12px 0 0">
-    The same position and cash-buffer caps are applied inside backtests when you run
-    <code>python -m trader backtest</code> — so backtest performance reflects
-    what live execution would actually do. Use <code>--no-risk</code> to compare
-    the unconstrained version.
-  </p>
-</div>
-
 {% endblock %}
