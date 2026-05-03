@@ -3,6 +3,17 @@
 {% block heading %}Advisor{% endblock %}
 {% block content %}
 
+{% if flash_msg %}
+  <div class="card" style="border-color:#3fb95066">
+    <p style="margin:0; color:#3fb950">✓ {{ flash_msg }}</p>
+  </div>
+{% endif %}
+{% if flash_err %}
+  <div class="card" style="border-color:#f8514966">
+    <p style="margin:0; color:#f85149">⚠️ {{ flash_err }}</p>
+  </div>
+{% endif %}
+
 <div class="card">
   <h2>AI Hedge Fund</h2>
   <div class="status-row">
@@ -17,24 +28,96 @@
     <p class="muted" style="font-size:0.9rem">Generated {{ advisor.age_label }}{% if advisor.generated_at %} · {{ advisor.generated_at }}{% endif %}</p>
   {% endif %}
   <p class="muted" style="font-size:0.85rem; line-height:1.5">
-    This tab is read-only. It displays advisory output from the external AI Hedge Fund repo for the symbols currently deployed by your strategy.
-    Treat it as research context, not an automatic trading input.
+    Each advisor is an LLM persona reasoning over public price data only. Treat as research context, not auto-trading input.
+    LLM personas: <strong>Value Investor</strong>, <strong>Contrarian / Short Bias</strong>, <strong>Growth / Innovation</strong>, <strong>GARP</strong>, <strong>Technical Trader</strong>.
+  </p>
+
+  <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap">
+    {% if advisor.deepseek_configured %}
+      <form method="post" action="/advisors/refresh" style="display:inline">
+        <button type="submit" style="padding:9px 16px; border:0; border-radius:6px;
+                background:#58a6ff; color:#0d1117; font-weight:700; cursor:pointer">
+          Refresh now (uses cached results &lt; 1h old)
+        </button>
+      </form>
+      <form method="post" action="/advisors/refresh?force=1" style="display:inline"
+            onsubmit="return confirm('Force re-run all advisors? This will burn fresh DeepSeek API calls (5 advisors × {{ cfg.universe|length }} symbols).');">
+        <button type="submit" style="padding:9px 16px; border:1px solid #30363d; border-radius:6px;
+                background:transparent; color:#c9d1d9; font-weight:600; cursor:pointer">
+          Force fresh re-run
+        </button>
+      </form>
+    {% else %}
+      <span class="muted" style="font-size:0.85rem">⚠️ Set <code>DEEPSEEK_API_KEY</code> in <code>/opt/trader/.env</code> and restart trader-dashboard to enable refresh.</span>
+    {% endif %}
+  </div>
+</div>
+
+{% if advisor.advisors %}
+<div class="card">
+  <h2>Per-Advisor Recommendations ({{ advisor.advisors|length }} advisors × {{ advisor.matrix_rows|length }} symbols)</h2>
+  <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th>Symbol</th>
+        {% for adv in advisor.advisors %}<th>{{ adv }}</th>{% endfor %}
+      </tr></thead>
+      <tbody>
+      {% for row in advisor.matrix_rows %}
+        <tr>
+          <td><strong>{{ row.symbol }}</strong></td>
+          {% for cell in row.cells %}
+            <td>
+              <span class="decision {{ cell.tone }}" title="{{ cell.rationale|e }}">
+                {{ cell.action }}{% if cell.confidence is not none %} · {{ "%.0f%%"|format(cell.confidence * 100) }}{% endif %}
+              </span>
+            </td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="font-size:0.78rem; margin-top:10px">
+    Hover any cell to see the full rationale. Confidence is the LLM's self-reported value (0-100%), not a calibrated probability.
   </p>
 </div>
 
 <div class="card">
-  <h2>Universe Advisory</h2>
+  <h2>Full Rationales</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Symbol</th><th>Advisor</th><th>Action</th><th>Conf</th><th>Rationale</th></tr></thead>
+      <tbody>
+      {% for row in advisor.matrix_rows %}
+        {% for cell in row.cells %}
+          <tr>
+            <td><strong>{{ row.symbol }}</strong></td>
+            <td>{{ cell.advisor }}</td>
+            <td><span class="decision {{ cell.tone }}">{{ cell.action }}</span></td>
+            <td>{% if cell.confidence is not none %}{{ "%.0f%%"|format(cell.confidence * 100) }}{% else %}—{% endif %}</td>
+            <td style="white-space:normal; max-width:600px">{{ cell.rationale or "—" }}</td>
+          </tr>
+        {% endfor %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Consensus per Symbol</h2>
   <table>
     <thead><tr>
-      <th>Symbol</th><th>Decision</th><th>Confidence</th><th>Quantity</th><th>Reasoning</th>
+      <th>Symbol</th><th>Decision</th><th>Confidence</th><th>Reasoning</th>
     </tr></thead>
     <tbody>
     {% for row in advisor.rows %}
       <tr>
         <td>{{ row.symbol }}</td>
         <td><span class="decision {{ row.tone }}">{{ row.action }}</span></td>
-        <td>{% if row.confidence is not none %}{{ row.confidence }}{% else %}n/a{% endif %}</td>
-        <td>{% if row.quantity is not none %}{{ row.quantity }}{% else %}n/a{% endif %}</td>
+        <td>{% if row.confidence is not none %}{{ "%.0f%%"|format((row.confidence or 0) * 100) if row.confidence <= 1 else row.confidence }}{% else %}n/a{% endif %}</td>
         <td>{{ row.reasoning or "No advisory output for this symbol yet." }}</td>
       </tr>
     {% endfor %}
@@ -43,37 +126,13 @@
 </div>
 
 <div class="card">
-  <h2>Service Setup</h2>
-  <p class="muted" style="font-size:0.9rem; line-height:1.5">
-    Initial advisor service: <a class="report" href="{{ advisor.repo_url }}" target="_blank">AI Hedge Fund</a>.
-    The upstream project is educational and does not place trades. Run it as a separate service or cron job, then write JSON to the path above.
-  </p>
-  <pre class="code-block">cd /opt
-sudo git clone https://github.com/virattt/ai-hedge-fund.git
-sudo chown -R trader:trader ai-hedge-fund
-cd /opt/ai-hedge-fund
-sudo -u trader poetry install</pre>
-  <pre class="code-block"># Expected dashboard output file:
-mkdir -p /opt/trader/data/advisors
-
-# JSON shape the dashboard reads:
-{
-  "generated_at": "2026-05-03T00:00:00+00:00",
-  "service": "AI Hedge Fund",
-  "decisions": {
-    "TQQQ": {"action": "BUY", "confidence": 0.72, "reasoning": "advisor summary"},
-    "SHV": {"action": "SELL", "confidence": 0.64, "reasoning": "advisor summary"}
-  }
-}</pre>
-  <pre class="code-block"># Upstream CLI shape from the repo:
-poetry run python src/main.py --ticker {{ cfg.universe | join(",") }}</pre>
+  <h2>Security Model</h2>
+  <ul class="muted" style="font-size:0.85rem; line-height:1.6; margin:0; padding-left:20px">
+    <li>Advisor LLM calls send <strong>only</strong> ticker symbols + computed price stats (returns, RSI, drawdown) to DeepSeek over HTTPS.</li>
+    <li>Your <strong>Alpaca API key never leaves the droplet</strong>. The advisor module uses the read-only Data client; it has no reference to the trading client.</li>
+    <li>The DeepSeek key is loaded from <code>/opt/trader/.env</code> (mode 600) and sent only as an HTTPS Bearer header.</li>
+    <li>Recommendations are cached for 1 hour to limit LLM spend. "Force fresh" bypasses the cache.</li>
+  </ul>
 </div>
-
-{% if advisor.analyst_signals %}
-<div class="card">
-  <h2>Raw Analyst Signals</h2>
-  <pre class="logic-block">{{ advisor.analyst_signals | tojson(indent=2) }}</pre>
-</div>
-{% endif %}
 
 {% endblock %}

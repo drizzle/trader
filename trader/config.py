@@ -33,6 +33,21 @@ class TelegramConfig(BaseModel):
         return bool(self.bot_token and self.chat_id)
 
 
+class DeepSeekConfig(BaseModel):
+    """LLM provider for the Advisors tab and Market Summary.
+
+    Optional — if no key is configured, advisor calls return a clear
+    'unconfigured' message instead of crashing.
+    """
+    api_key: str | None = None
+    base_url: str = "https://api.deepseek.com/v1"
+    default_model: str = "deepseek-chat"
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.api_key)
+
+
 class RiskConfig(BaseModel):
     max_position_pct: float = 1.0
     daily_loss_limit_pct: float = 0.03
@@ -61,6 +76,7 @@ class Config(BaseModel):
     storage: StorageConfig
     alpaca: AlpacaConfig
     telegram: TelegramConfig
+    deepseek: DeepSeekConfig
     data_dir: Path
     log_level: str = "INFO"
 
@@ -101,6 +117,10 @@ def load_config(yaml_path: str | Path = "config.yaml") -> Config:
         chat_id=os.environ.get("TELEGRAM_CHAT_ID") or None,
     )
 
+    deepseek = DeepSeekConfig(
+        api_key=os.environ.get("DEEPSEEK_API_KEY") or None,
+    )
+
     return Config(
         universe=raw["universe"],
         strategy=StrategyConfig(**raw["strategy"]),
@@ -109,6 +129,7 @@ def load_config(yaml_path: str | Path = "config.yaml") -> Config:
         storage=StorageConfig(**raw.get("storage", {})),
         alpaca=alpaca,
         telegram=telegram,
+        deepseek=deepseek,
         data_dir=data_dir,
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
     )

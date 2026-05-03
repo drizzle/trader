@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Market Summary{% endblock %}
+{% block heading %}Market Summary{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2>One-prompt market briefing</h2>
+  <p class="muted" style="font-size:0.85rem; line-height:1.55; margin:0 0 12px">
+    Pick a prompt, optionally customize, and the LLM returns a short briefing.
+    For prompts that benefit from grounding, current price stats from your Alpaca data are
+    automatically attached to the prompt. The LLM does NOT have real-time news access — treat
+    qualitative claims about "recent events" with skepticism.
+  </p>
+
+  {% if not deepseek_configured %}
+    <div class="empty">⚠️ <code>DEEPSEEK_API_KEY</code> is not set. Add it to <code>/opt/trader/.env</code> and restart trader-dashboard.</div>
+  {% else %}
+
+  <form method="post" action="/summary">
+    <div style="display:grid; gap:10px">
+      {% for p in prompts %}
+        <label style="display:flex; gap:10px; align-items:flex-start; padding:10px;
+                      border:1px solid {{ '#58a6ff' if selected_key == p.key else '#30363d' }};
+                      border-radius:6px; cursor:pointer;
+                      background:{{ '#1f6feb22' if selected_key == p.key else 'transparent' }}">
+          <input type="radio" name="prompt_key" value="{{ p.key }}"
+                 {% if selected_key == p.key or (not selected_key and loop.first) %}checked{% endif %}
+                 style="margin-top:3px">
+          <div style="flex:1">
+            <div style="color:#e6edf3; font-weight:600">{{ p.label }}</div>
+            <div class="muted" style="font-size:0.8rem; margin-top:3px">
+              {{ p.template[:120] }}{% if p.template|length > 120 %}…{% endif %}
+              {% if p.placeholder_kind != "none" %}
+                <span style="color:#58a6ff"> · accepts {{ p.placeholder_kind }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </label>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top:14px">
+      <label style="display:block; color:#8b949e; font-size:0.85rem; margin-bottom:4px">
+        Optional input (tickers like <code>SPY, QQQ</code> for ticker prompts; topic text for the others)
+      </label>
+      <input type="text" name="user_input" value="{{ user_input or '' }}"
+             placeholder="leave blank to use the prompt's default"
+             style="width:100%; padding:10px; border-radius:6px; border:1px solid #30363d;
+                    background:#0d1117; color:#e6edf3; font-size:0.95rem">
+    </div>
+
+    <button type="submit" style="margin-top:14px; padding:10px 18px; border:0; border-radius:6px;
+            background:#58a6ff; color:#0d1117; font-weight:700; cursor:pointer">
+      Run summary
+    </button>
+    <span class="muted" style="font-size:0.8rem; margin-left:10px">Takes 5–20s. One DeepSeek API call.</span>
+  </form>
+
+  {% endif %}
+</div>
+
+{% if error %}
+<div class="card" style="border-color:#f8514966">
+  <p style="margin:0; color:#f85149">⚠️ {{ error }}</p>
+</div>
+{% endif %}
+
+{% if result %}
+<div class="card">
+  <h2>Result</h2>
+  <pre style="white-space:pre-wrap; word-wrap:break-word; padding:14px; background:#0d1117;
+              border:1px solid #30363d; border-radius:6px; color:#e6edf3; font-size:0.92rem;
+              line-height:1.55; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+              margin:0">{{ result }}</pre>
+  <p class="muted" style="font-size:0.78rem; margin:10px 0 0">
+    LLM-generated text. May contain inaccuracies. Not financial advice.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}
