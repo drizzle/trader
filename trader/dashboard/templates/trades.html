@@ -678,18 +678,24 @@
     var spanT = (maxT - minT) || 1;
     var w = AW - pad.l - pad.r;
     var h = AH - pad.t - pad.b;
-    var x = function (t) { return pad.l + ((t - minT) / spanT) * w; };
-    var y = function (pct) { return pad.t + (1 - pct) * h; };
+    var top = pad.t;
     var bottom = AH - pad.b;
 
-    var ptsAsset = rows.map(function (d) { return { x: x(d.t), y: y(d.assetPct) }; });
+    // Stacked-bar layout: N data points → N evenly-spaced bars (Composer
+    // style). slotW is the per-bar width budget; gap shrinks to 0 when bars
+    // get thin so a long history reads as a continuous fill.
+    var n = rows.length;
+    var slotW = w / n;
+    var gap = slotW > 5 ? 1 : 0;
+    var barW = Math.max(1, slotW - gap);
 
+    // Reference grid lines at 25 / 50 / 75%.
     ctx.save();
     ctx.strokeStyle = colors.grid;
     ctx.lineWidth = 1;
     ctx.setLineDash([2, 4]);
     [0.25, 0.5, 0.75].forEach(function (pct) {
-      var gy = y(pct);
+      var gy = top + pct * h;
       ctx.beginPath();
       ctx.moveTo(pad.l, gy);
       ctx.lineTo(AW - pad.r, gy);
@@ -697,41 +703,34 @@
     });
     ctx.restore();
 
-    var cashGrad = ctx.createLinearGradient(0, pad.t, 0, bottom);
-    cashGrad.addColorStop(0, hexWithAlpha(colors.cash, 0.14));
-    cashGrad.addColorStop(1, hexWithAlpha(colors.cash, 0.38));
-    ctx.fillStyle = cashGrad;
-    ctx.fillRect(pad.l, pad.t, AW - pad.l - pad.r, bottom - pad.t);
+    // Bars. Cash sits on the bottom (cyan); the holding stacks on top
+    // (accent). Each bar is exactly 100% tall — only the split moves.
+    for (var i = 0; i < n; i++) {
+      var d = rows[i];
+      var bx = pad.l + i * slotW + gap / 2;
+      var cashH  = d.cashPct  * h;
+      var assetH = d.assetPct * h;
+      // Cash band (bottom)
+      ctx.fillStyle = colors.cash;
+      ctx.fillRect(bx, bottom - cashH, barW, cashH);
+      // Asset band (stacked above cash)
+      ctx.fillStyle = colors.up;
+      ctx.fillRect(bx, bottom - cashH - assetH, barW, assetH);
+    }
 
-    var assetGrad = ctx.createLinearGradient(0, pad.t, 0, bottom);
-    assetGrad.addColorStop(0, hexWithAlpha(colors.up, 0.50));
-    assetGrad.addColorStop(1, hexWithAlpha(colors.up, 0.12));
-    ctx.fillStyle = assetGrad;
-    ctx.beginPath();
-    ctx.moveTo(ptsAsset[0].x, bottom);
-    ctx.lineTo(ptsAsset[0].x, ptsAsset[0].y);
-    smoothPath(ctx, ptsAsset, false);
-    ctx.lineTo(ptsAsset[ptsAsset.length - 1].x, bottom);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.strokeStyle = colors.up;
-    ctx.lineWidth = 1.8;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    smoothPath(ctx, ptsAsset);
-    ctx.stroke();
-
+    // Trade markers — small circles at the top of the chart, at the time of
+    // each fill. Buys = green, sells = red. Reflects every flatten/buy/sell
+    // since each fill changes the cash/asset split on the next snapshot.
     var visibleOrders = ORDERS.filter(function (o) { return o.t >= minT && o.t <= maxT; });
     visibleOrders.forEach(function (o) {
-      var ox = x(o.t);
+      var ratio = (o.t - minT) / spanT;
+      var ox = pad.l + ratio * w;
       var buy = o.side === 'buy';
       ctx.fillStyle = buy ? colors.up : colors.down;
       ctx.strokeStyle = colors.bg;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(ox, buy ? pad.t + 8 : bottom - 8, 4, 0, Math.PI * 2);
+      ctx.arc(ox, top + 6, 3.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     });
@@ -741,33 +740,31 @@
       Math.round(last.cashPct * 100) + '% cash / ' +
       Math.round(last.assetPct * 100) + '% ' + allocationLabel + ' now';
 
+    // Hover: highlight the bar with a 1px outline + tooltip showing exact
+    // percentages and the time of that snapshot.
     if (allocHover && allocHover.idx != null) {
-      var hp = ptsAsset[allocHover.idx];
-      var hv = rows[allocHover.idx];
+      var idx = Math.min(Math.max(0, allocHover.idx), n - 1);
+      var hv = rows[idx];
+      var hbx = pad.l + idx * slotW + gap / 2;
+      var hCashH  = hv.cashPct  * h;
+      var hAssetH = hv.assetPct * h;
+
       ctx.save();
       ctx.strokeStyle = colors.muted;
       ctx.lineWidth = 1;
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.moveTo(hp.x, pad.t);
-      ctx.lineTo(hp.x, bottom);
-      ctx.stroke();
+      ctx.strokeRect(hbx + 0.5, bottom - hCashH - hAssetH + 0.5, barW - 1, hCashH + hAssetH - 1);
       ctx.restore();
-      ctx.fillStyle = colors.bg;
-      ctx.strokeStyle = colors.up;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(hp.x, hp.y, 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
 
       allocTooltip.hidden = false;
       allocTooltip.querySelector('.t-price').textContent =
-        Math.round(hv.cashPct * 100) + '% cash / ' +
-        Math.round(hv.assetPct * 100) + '% ' + allocationLabel;
+        Math.round(hv.cashPct * 100) + '% cash · ' +
+        Math.round(hv.assetPct * 100) + '% ' + allocationLabel +
+        ' ($' + Math.round(hv.cash).toLocaleString() + ' / $' +
+        Math.round(hv.asset).toLocaleString() + ')';
       allocTooltip.querySelector('.t-time').textContent = fmtTimeShort(hv.t, spanT);
-      allocTooltip.style.left = clamp(hp.x, 70, AW - 70) + 'px';
-      allocTooltip.style.top = Math.max(28, hp.y - 12) + 'px';
+      var tipX = clamp(hbx + barW / 2, 90, AW - 90);
+      allocTooltip.style.left = tipX + 'px';
+      allocTooltip.style.top = Math.max(28, top + 8) + 'px';
     } else {
       allocTooltip.hidden = true;
     }
@@ -817,19 +814,14 @@
     if (!rows.length) return;
     var rect = allocCanvas.getBoundingClientRect();
     var x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    var minT = rows[0].t;
-    var maxT = rows[rows.length - 1].t;
-    var spanT = (maxT - minT) || 1;
+    // Bar chart: map pointer x → bar index directly. Each bar occupies
+    // (chartW / N) horizontal pixels.
     var w = AW - pad.l - pad.r;
-    var ratio = clamp((x - pad.l) / w, 0, 1);
-    var targetT = minT + ratio * spanT;
-    var lo = 0, hi = rows.length - 1;
-    while (lo < hi) {
-      var mid = (lo + hi) >> 1;
-      if (rows[mid].t < targetT) lo = mid + 1; else hi = mid;
-    }
-    var idx = lo;
-    if (idx > 0 && Math.abs(rows[idx-1].t - targetT) < Math.abs(rows[idx].t - targetT)) idx -= 1;
+    var n = rows.length;
+    var slotW = w / n;
+    var idx = Math.floor((x - pad.l) / slotW);
+    if (idx < 0) idx = 0;
+    if (idx >= n) idx = n - 1;
     allocHover = { idx: idx };
     drawAllocation();
   }

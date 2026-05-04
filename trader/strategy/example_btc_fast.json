@@ -1,0 +1,11 @@
+{
+  "name": "btc_fast_sma",
+  "type": "sma_crossover",
+  "is_crypto": true,
+  "params": {
+    "target_symbol": "BTC/USD",
+    "fast_window": 10,
+    "slow_window": 30,
+    "target_allocation": 0.9
+  }
+}
