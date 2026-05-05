@@ -48,6 +48,108 @@ def _position_snapshot_rows(positions: dict[str, object]) -> list[dict[str, floa
     return rows
 
 
+def _unique_positions(positions: dict[str, object]) -> list[object]:
+    values = list(positions.values())
+    symbols = {getattr(p, "symbol") for p in values}
+    out: list[object] = []
+    seen: set[str] = set()
+    for p in values:
+        symbol = getattr(p, "symbol")
+        if (
+            "/" not in symbol
+            and symbol.endswith("USD")
+            and f"{symbol[:-3]}/USD" in symbols
+        ):
+            continue
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        out.append(p)
+    return out
+
+
+def _enforce_cash_buffer(
+    *,
+    cfg: Config,
+    account: object,
+    positions: dict[str, object],
+    execution: ExecutionClient,
+    strategy: Strategy,
+    alerts: Alerts,
+) -> bool:
+    required_cash = float(account.equity) * cfg.risk.min_cash_buffer_pct
+    cash_shortfall = required_cash - float(account.cash)
+    if cash_shortfall <= 1.0:
+        return False
+
+    unique = _unique_positions(positions)
+    if not unique:
+        logger.warning(
+            f"Cash buffer breach: cash=${account.cash:,.2f}, "
+            f"required=${required_cash:,.2f}, but no positions are open to trim"
+        )
+        return False
+
+    logger.warning(
+        f"Cash buffer breach: cash=${account.cash:,.2f}, required=${required_cash:,.2f}. "
+        f"Trimming about ${cash_shortfall:,.2f} of exposure."
+    )
+    alerts.send(
+        f"⚠️ *Cash buffer breach*\nCash ${account.cash:,.2f} is below required "
+        f"${required_cash:,.2f}. Trimming positions."
+    )
+    try:
+        execution.cancel_open_orders()
+    except Exception as e:
+        logger.warning(f"Could not cancel open orders before cash-buffer trim: {e}")
+
+    strategy_symbols = set(strategy.universe)
+    ordered = sorted(
+        unique,
+        key=lambda p: (
+            getattr(p, "symbol") in strategy_symbols,
+            -float(getattr(p, "market_value")),
+        ),
+    )
+    remaining = cash_shortfall
+    submitted = False
+    for p in ordered:
+        symbol = getattr(p, "symbol")
+        qty = float(getattr(p, "qty"))
+        market_value = float(getattr(p, "market_value"))
+        if qty <= 0 or market_value <= 0 or remaining <= 1.0:
+            continue
+        price = market_value / qty
+        if price <= 0:
+            continue
+        if "/" in symbol:
+            sell_qty = min(qty, round(remaining / price, 8))
+            if sell_qty < 0.0001:
+                continue
+        else:
+            sell_qty = min(qty, float(math.ceil(remaining / price)))
+            if sell_qty < 1:
+                continue
+        order_id = execution.submit_market_order(
+            symbol=symbol,
+            qty=sell_qty,
+            side=OrderSide.SELL,
+            strategy=f"{strategy.name}:cash_buffer",
+        )
+        if order_id:
+            submitted = True
+            remaining -= sell_qty * price
+            alerts.send(
+                f"📉 *Cash-buffer trim submitted*\nSELL {sell_qty} {symbol} "
+                f"@ ~${price:,.2f}"
+            )
+
+    if submitted:
+        return True
+    logger.warning("Cash buffer remains breached, but no trim orders were submitted")
+    return False
+
+
 def _process_pending_strategy_switch(
     *,
     storage: Storage,
@@ -170,6 +272,16 @@ def tick(
         kill_path = risk._kill_switch
         kill_path.parent.mkdir(parents=True, exist_ok=True)
         kill_path.write_text(f"engaged at {datetime.now(timezone.utc).isoformat()} — daily loss")
+        return
+
+    if _enforce_cash_buffer(
+        cfg=cfg,
+        account=account,
+        positions=positions,
+        execution=execution,
+        strategy=strategy,
+        alerts=alerts,
+    ):
         return
 
     # 3. Fetch bars and compute signals.

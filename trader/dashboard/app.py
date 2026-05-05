@@ -142,6 +142,40 @@ def _read_equity_curve(db_path: Path) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def _read_position_allocation(db_path: Path) -> list[dict]:
+    if not db_path.exists():
+        return []
+    with sqlite3.connect(db_path) as c:
+        c.row_factory = sqlite3.Row
+        try:
+            rows = c.execute(
+                """
+                SELECT
+                    m.snapshot_ts_utc AS ts_utc,
+                    p.symbol,
+                    p.qty,
+                    p.market_value,
+                    e.cash,
+                    e.equity
+                FROM position_snapshot_meta m
+                LEFT JOIN position_snapshots p
+                    ON p.snapshot_ts_utc = m.snapshot_ts_utc
+                LEFT JOIN equity_snapshots e
+                    ON e.ts_utc = (
+                        SELECT e2.ts_utc
+                        FROM equity_snapshots e2
+                        WHERE e2.ts_utc <= m.snapshot_ts_utc
+                        ORDER BY e2.ts_utc DESC
+                        LIMIT 1
+                    )
+                ORDER BY m.snapshot_ts_utc ASC, p.symbol ASC
+                """
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return [dict(r) for r in rows]
+
+
 def _position_rows_from_snapshot(rows: list[dict]) -> list[dict]:
     positions = []
     for p in rows:
@@ -436,15 +470,22 @@ def _write_config_yaml(raw: dict, reason: str) -> None:
         raise RuntimeError(f"Could not write {path}: {e}") from e
 
 
-def _restart_trader_service() -> tuple[bool, str]:
+def _trader_service_name(cfg: Config) -> str:
+    return os.environ.get(
+        "TRADER_SERVICE_NAME",
+        f"trader@{cfg.account.id}" if len(cfg.accounts) > 1 else "trader",
+    )
+
+
+def _restart_trader_service(service_name: str = "trader") -> tuple[bool, str]:
     systemctl = os.environ.get("SYSTEMCTL_BIN", "/bin/systemctl")
     try:
         subprocess.run(
-            ["sudo", "-n", systemctl, "restart", "trader"],
+            ["sudo", "-n", systemctl, "restart", service_name],
             check=True, capture_output=True, text=True, timeout=30,
         )
         check = subprocess.run(
-            ["sudo", "-n", systemctl, "is-active", "trader"],
+            ["sudo", "-n", systemctl, "is-active", service_name],
             capture_output=True, text=True, timeout=10,
         )
     except subprocess.CalledProcessError as e:
@@ -456,8 +497,8 @@ def _restart_trader_service() -> tuple[bool, str]:
     state = (check.stdout or "").strip() or "unknown"
     if state != "active":
         detail = (check.stderr or "").strip()
-        return False, f"trader service is {state}; {detail}".strip()
-    return True, "trader restarted"
+        return False, f"{service_name} service is {state}; {detail}".strip()
+    return True, f"{service_name} restarted"
 
 
 def _apply_risk_update(raw: dict, risk_values: dict, kill_switch_path: str) -> dict:
@@ -1047,9 +1088,10 @@ def create_app(cfg: Config) -> FastAPI:
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
         orders = _read_orders(cfg.db_path, limit=50)
         chart_orders = _read_orders(cfg.db_path, limit=500)
-        equity_curve = _read_equity_curve(cfg.db_path)
-        allocation_signals = _read_allocation_signals(cfg.db_path)
         storage = Storage(cfg.db_path)
+        equity_curve = _read_equity_curve(cfg.db_path)
+        position_allocation = _read_position_allocation(cfg.db_path)
+        allocation_signals = _read_allocation_signals(cfg.db_path)
         latest_position_ts, snapshot_positions = storage.latest_position_snapshot()
         positions = _position_rows_from_snapshot(snapshot_positions)
         latest_equity = _read_latest_row(cfg.db_path, "equity_snapshots")
@@ -1160,6 +1202,7 @@ def create_app(cfg: Config) -> FastAPI:
             "equity_curve_json": json.dumps(equity_curve, default=str),
             "chart_orders_json": json.dumps(chart_orders, default=str),
             "allocation_signals_json": json.dumps(allocation_signals, default=str),
+            "position_allocation_json": json.dumps(position_allocation, default=str),
             "allocation_asset_label": allocation_asset_label,
             "pnl": pnl,
             "read_only": read_only,
@@ -1305,7 +1348,7 @@ def create_app(cfg: Config) -> FastAPI:
         cfg.risk.daily_loss_limit_pct = daily_loss_limit_pct
         cfg.risk.min_cash_buffer_pct = min_cash_buffer_pct
 
-        ok, detail = _restart_trader_service()
+        ok, detail = _restart_trader_service(_trader_service_name(cfg))
         from urllib.parse import quote
         if not ok:
             return RedirectResponse(

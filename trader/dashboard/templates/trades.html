@@ -334,6 +334,7 @@
   var raw = {{ equity_curve_json | safe }} || [];
   var rawOrders = {{ chart_orders_json | safe }} || [];
   var rawAllocationSignals = {{ allocation_signals_json | safe }} || [];
+  var rawPositionAllocation = {{ position_allocation_json | safe }} || [];
   var allocationLabel = {{ allocation_asset_label | tojson }};
   // Normalize: each row { ts_utc, equity } → { t: ms, v: number }
   var ALL = raw
@@ -365,7 +366,8 @@
     .filter(Boolean)
     .sort(function (a, b) { return a.t - b.t; });
   var SIGNAL_ALLOC = buildSignalAllocation(rawAllocationSignals);
-  var ALLOC = SIGNAL_ALLOC.length ? SIGNAL_ALLOC : EQUITY_ALLOC;
+  var POSITION_ALLOC = buildPositionAllocation(rawPositionAllocation);
+  var ALLOC = POSITION_ALLOC.length ? POSITION_ALLOC : (SIGNAL_ALLOC.length ? SIGNAL_ALLOC : EQUITY_ALLOC);
   var ORDERS = rawOrders
     .map(function (d) {
       var t = Date.parse(d.ts_utc);
@@ -591,6 +593,61 @@
         holdings: holdings,
       };
     });
+  }
+
+  function buildPositionAllocation(rows) {
+    var groups = [];
+    var byTs = {};
+    (rows || []).forEach(function (d) {
+      var t = Date.parse(d.ts_utc);
+      if (!isFinite(t)) return;
+      var key = d.ts_utc;
+      if (!byTs[key]) {
+        byTs[key] = {
+          t: t,
+          ts: key,
+          cash: Number(d.cash),
+          equity: Number(d.equity),
+          holdings: [],
+        };
+        groups.push(byTs[key]);
+      }
+      var symbol = d.symbol ? String(d.symbol) : '';
+      var value = Number(d.market_value);
+      if (symbol && isFinite(value) && Math.abs(value) > 0.01) {
+        byTs[key].holdings.push({ symbol: symbol, value: Math.max(0, value) });
+      }
+      if (!isFinite(byTs[key].cash) && isFinite(Number(d.cash))) byTs[key].cash = Number(d.cash);
+      if (!isFinite(byTs[key].equity) && isFinite(Number(d.equity))) byTs[key].equity = Number(d.equity);
+    });
+    return groups
+      .sort(function (a, b) { return a.t - b.t; })
+      .map(function (group) {
+        var positionValue = group.holdings.reduce(function (sum, h) { return sum + h.value; }, 0);
+        var cash = isFinite(group.cash) ? Math.max(0, group.cash) : 0;
+        var equity = isFinite(group.equity) && group.equity > 0 ? group.equity : cash + positionValue;
+        if (equity <= 0) return null;
+        var holdings = group.holdings
+          .sort(function (a, b) { return a.symbol.localeCompare(b.symbol); })
+          .map(function (h) {
+            return {
+              symbol: h.symbol,
+              pct: clamp(h.value / equity, 0, 1),
+              value: h.value,
+            };
+          })
+          .filter(function (h) { return h.pct > 0.0001; });
+        var assetPct = clamp(positionValue / equity, 0, 1);
+        return {
+          t: group.t,
+          cash: cash,
+          equity: equity,
+          cashPct: clamp(cash / equity, 0, 1),
+          assetPct: assetPct,
+          holdings: holdings,
+        };
+      })
+      .filter(Boolean);
   }
 
   function allocationSymbols(rows) {

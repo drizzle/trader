@@ -146,6 +146,10 @@ class ExecutionClient:
 
     # --- writes ---
 
+    def cancel_open_orders(self) -> None:
+        logger.warning("Canceling open orders")
+        self._client.cancel_orders()
+
     def submit_market_order(
         self, symbol: str, qty: float, side: OrderSide, strategy: str
     ) -> str | None:
