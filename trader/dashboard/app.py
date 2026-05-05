@@ -29,6 +29,8 @@ from pathlib import Path
 from urllib.parse import parse_qs
 from zoneinfo import ZoneInfo
 
+import yaml
+
 # All storage + order execution happens in UTC. The dashboard *displays* in
 # Pacific Time so it matches the user's wall clock. ZoneInfo automatically
 # handles PDT/PST transitions — same instant, correct local label.
@@ -137,6 +139,18 @@ def _read_equity_curve(db_path: Path) -> list[dict]:
             "SELECT ts_utc, equity, cash FROM equity_snapshots ORDER BY ts_utc ASC"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def _read_allocation_signals(db_path: Path, limit: int = 5000) -> list[dict]:
+    if not db_path.exists():
+        return []
+    with sqlite3.connect(db_path) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            "SELECT ts_utc, strategy, symbol, target_pct "
+            "FROM signals ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in reversed(rows)]
 
 
 def _read_latest_row(db_path: Path, table: str) -> dict | None:
@@ -366,6 +380,58 @@ def _memory_mb() -> float:
     if usage > 10_000_000:
         return usage / (1024 * 1024)
     return usage / 1024
+
+
+def _config_path() -> Path:
+    return Path(os.environ.get("CONFIG_PATH", "config.yaml")).resolve()
+
+
+def _load_config_yaml() -> dict:
+    path = _config_path()
+    try:
+        raw = yaml.safe_load(path.read_text()) or {}
+    except Exception as e:
+        raise RuntimeError(f"Could not read {path}: {e}") from e
+    if not isinstance(raw, dict):
+        raise RuntimeError(f"{path} is not a YAML mapping")
+    return raw
+
+
+def _write_config_yaml(raw: dict, reason: str) -> None:
+    path = _config_path()
+    header = (
+        "# Strategy + runtime config. Secrets live in .env, NOT here.\n"
+        f"# Last updated by dashboard {reason} at "
+        f"{datetime.now(timezone.utc).isoformat(timespec='seconds')}\n\n"
+    )
+    body = yaml.safe_dump(raw, sort_keys=False, default_flow_style=False)
+    try:
+        path.write_text(header + body)
+    except Exception as e:
+        raise RuntimeError(f"Could not write {path}: {e}") from e
+
+
+def _restart_trader_service() -> tuple[bool, str]:
+    try:
+        subprocess.run(
+            ["sudo", "-n", "systemctl", "restart", "trader"],
+            check=True, capture_output=True, text=True, timeout=30,
+        )
+        check = subprocess.run(
+            ["sudo", "-n", "systemctl", "is-active", "trader"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or e.stdout or str(e)).strip()
+        return False, detail or "systemctl restart failed"
+    except subprocess.TimeoutExpired:
+        return False, "systemctl restart timed out"
+
+    state = (check.stdout or "").strip() or "unknown"
+    if state != "active":
+        detail = (check.stderr or "").strip()
+        return False, f"trader service is {state}; {detail}".strip()
+    return True, "trader restarted"
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -762,6 +828,7 @@ def create_app(cfg: Config) -> FastAPI:
         orders = _read_orders(cfg.db_path, limit=50)
         chart_orders = _read_orders(cfg.db_path, limit=500)
         equity_curve = _read_equity_curve(cfg.db_path)
+        allocation_signals = _read_allocation_signals(cfg.db_path)
 
         ec = _execution()
         if ec is not None:
@@ -824,7 +891,20 @@ def create_app(cfg: Config) -> FastAPI:
                 recent_fill_symbol = o["symbol"]
                 break
 
-        if len(non_zero_positions) == 1:
+        signal_symbols = []
+        seen_signal_symbols = set()
+        for s in allocation_signals:
+            sym = s.get("symbol")
+            if sym and sym not in seen_signal_symbols:
+                seen_signal_symbols.add(sym)
+                signal_symbols.append(sym)
+
+        if signal_symbols:
+            allocation_asset_label = (
+                signal_symbols[0] if len(signal_symbols) == 1
+                else f"{len(signal_symbols)} assets"
+            )
+        elif len(non_zero_positions) == 1:
             allocation_asset_label = non_zero_positions[0]["symbol"]
         elif len(non_zero_positions) > 1:
             allocation_asset_label = " + ".join(p["symbol"] for p in non_zero_positions[:3])
@@ -849,6 +929,7 @@ def create_app(cfg: Config) -> FastAPI:
             "orders": orders,
             "equity_curve_json": json.dumps(equity_curve, default=str),
             "chart_orders_json": json.dumps(chart_orders, default=str),
+            "allocation_signals_json": json.dumps(allocation_signals, default=str),
             "allocation_asset_label": allocation_asset_label,
             "pnl": pnl,
             "read_only": read_only,
@@ -859,7 +940,7 @@ def create_app(cfg: Config) -> FastAPI:
         })
 
     @app.get("/risk", response_class=HTMLResponse)
-    def risk_view(request: Request):
+    def risk_view(request: Request, msg: str = "", err: str = ""):
         kill_path = Path(cfg.risk.kill_switch_path)
         kill_engaged = kill_path.exists()
         kill_reason = kill_path.read_text().strip() if kill_engaged else ""
@@ -909,7 +990,66 @@ def create_app(cfg: Config) -> FastAPI:
             "daily_loss_pct": daily_loss_pct,
             "read_only": read_only,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
+            "flash_msg": msg,
+            "flash_err": err,
         })
+
+    @app.post("/risk/deploy")
+    async def risk_deploy_submit(request: Request):
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
+
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+
+        def _pct_field(name: str, label: str) -> float:
+            raw = (form.get(name, [""])[0] or "").strip()
+            try:
+                value = float(raw)
+            except ValueError as e:
+                raise ValueError(f"{label} must be a number") from e
+            if value < 0 or value > 100:
+                raise ValueError(f"{label} must be between 0 and 100")
+            return value / 100.0
+
+        try:
+            max_position_pct = _pct_field("max_position_pct", "Max position")
+            daily_loss_limit_pct = _pct_field("daily_loss_limit_pct", "Daily loss cap")
+            min_cash_buffer_pct = _pct_field("min_cash_buffer_pct", "Min cash buffer")
+            if max_position_pct + min_cash_buffer_pct > 1.0:
+                raise ValueError("Max position plus min cash buffer cannot exceed 100%")
+
+            raw = _load_config_yaml()
+            risk = dict(raw.get("risk") or {})
+            risk.update({
+                "max_position_pct": max_position_pct,
+                "daily_loss_limit_pct": daily_loss_limit_pct,
+                "min_cash_buffer_pct": min_cash_buffer_pct,
+                "kill_switch_path": cfg.risk.kill_switch_path,
+            })
+            raw["risk"] = risk
+            _write_config_yaml(raw, "risk update")
+        except Exception as e:
+            from urllib.parse import quote
+            return RedirectResponse(url=f"/risk?err={quote(str(e))}", status_code=303)
+
+        # Keep the currently running dashboard view in sync. The trader process
+        # still needs a restart to load the file on its next boot.
+        cfg.risk.max_position_pct = max_position_pct
+        cfg.risk.daily_loss_limit_pct = daily_loss_limit_pct
+        cfg.risk.min_cash_buffer_pct = min_cash_buffer_pct
+
+        ok, detail = _restart_trader_service()
+        from urllib.parse import quote
+        if not ok:
+            return RedirectResponse(
+                url=f"/risk?err={quote('Risk config saved, but trader restart failed: ' + detail)}",
+                status_code=303,
+            )
+        return RedirectResponse(
+            url="/risk?msg=Risk+config+saved+and+trader+restarted",
+            status_code=303,
+        )
 
     @app.post("/risk/kill-switch/engage")
     def kill_switch_engage():

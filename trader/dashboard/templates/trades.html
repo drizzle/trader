@@ -121,8 +121,7 @@
     </div>
     <div class="allocation-legend">
       <span><i class="cash"></i>Cash</span>
-      <span><i class="asset"></i>{{ allocation_asset_label }}</span>
-      <span><i class="trade"></i>Trades</span>
+      <span id="allocationLegendAssets"></span>
     </div>
   </div>
   <div class="equity-chart-wrap allocation-chart-wrap">
@@ -231,6 +230,11 @@
     align-items: center;
     gap: 7px;
   }
+  #allocationLegendAssets {
+    display: inline-flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
   .allocation-legend i {
     width: 10px;
     height: 10px;
@@ -239,10 +243,6 @@
   }
   .allocation-legend .cash { background: #22d3ee; }
   .allocation-legend .asset { background: var(--accent); }
-  .allocation-legend .trade {
-    background: var(--neg);
-    border-radius: 999px;
-  }
   .allocation-chart-wrap { height: 210px; }
   .equity-tooltip {
     position: absolute; top: 0; left: 0;
@@ -333,6 +333,7 @@
 
   var raw = {{ equity_curve_json | safe }} || [];
   var rawOrders = {{ chart_orders_json | safe }} || [];
+  var rawAllocationSignals = {{ allocation_signals_json | safe }} || [];
   var allocationLabel = {{ allocation_asset_label | tojson }};
   // Normalize: each row { ts_utc, equity } → { t: ms, v: number }
   var ALL = raw
@@ -343,7 +344,7 @@
     })
     .filter(Boolean)
     .sort(function (a, b) { return a.t - b.t; });
-  var ALLOC = raw
+  var EQUITY_ALLOC = raw
     .map(function (d) {
       var t = Date.parse(d.ts_utc);
       var equity = Number(d.equity);
@@ -358,10 +359,13 @@
         asset: asset,
         cashPct: cash / equity,
         assetPct: asset / equity,
+        holdings: [{ symbol: allocationLabel, pct: asset / equity, value: asset }],
       };
     })
     .filter(Boolean)
     .sort(function (a, b) { return a.t - b.t; });
+  var SIGNAL_ALLOC = buildSignalAllocation(rawAllocationSignals);
+  var ALLOC = SIGNAL_ALLOC.length ? SIGNAL_ALLOC : EQUITY_ALLOC;
   var ORDERS = rawOrders
     .map(function (d) {
       var t = Date.parse(d.ts_utc);
@@ -385,6 +389,7 @@
   var tooltip   = document.getElementById('equityTooltip');
   var allocTooltip = document.getElementById('allocationTooltip');
   var allocationSub = document.getElementById('allocationSub');
+  var allocationLegendAssets = document.getElementById('allocationLegendAssets');
   var ranges    = document.getElementById('equityRanges');
 
   if (!ALL.length) {
@@ -523,7 +528,90 @@
       muted:  (s.getPropertyValue('--fg-2')   || '#6f8479').trim(),
       bg:     (s.getPropertyValue('--bg-1')   || '#0f1c17').trim(),
       cash:   '#22d3ee',
+      palette: ['#00f58a', '#c084fc', '#fb7185', '#f97316', '#38bdf8', '#fde047', '#a3e635', '#f0abfc'],
     };
+  }
+
+  function buildSignalAllocation(rows) {
+    var parsed = (rows || [])
+      .map(function (d) {
+        var t = Date.parse(d.ts_utc);
+        var pct = Number(d.target_pct);
+        if (!isFinite(t) || !isFinite(pct) || !d.symbol) return null;
+        return {
+          t: t,
+          ts: d.ts_utc,
+          strategy: d.strategy || '',
+          symbol: String(d.symbol),
+          pct: clamp(pct, 0, 1),
+        };
+      })
+      .filter(Boolean)
+      .sort(function (a, b) { return a.t - b.t; });
+    if (!parsed.length) return [];
+
+    var groups = [];
+    parsed.forEach(function (row) {
+      var last = groups[groups.length - 1];
+      if (!last || last.ts !== row.ts) {
+        groups.push({ ts: row.ts, t: row.t, strategy: row.strategy, rows: [row] });
+      } else {
+        last.rows.push(row);
+      }
+    });
+
+    var latest = {};
+    var activeStrategy = groups[0].strategy;
+    return groups.map(function (group) {
+      if (group.strategy && activeStrategy && group.strategy !== activeStrategy) {
+        latest = {};
+      }
+      activeStrategy = group.strategy || activeStrategy;
+      group.rows.forEach(function (row) {
+        latest[row.symbol] = row.pct;
+      });
+
+      var holdings = Object.keys(latest)
+        .sort()
+        .map(function (symbol) {
+          return { symbol: symbol, pct: latest[symbol], value: null };
+        })
+        .filter(function (h) { return h.pct > 0.0001; });
+      var total = holdings.reduce(function (sum, h) { return sum + h.pct; }, 0);
+      if (total > 1) {
+        holdings.forEach(function (h) { h.pct = h.pct / total; });
+        total = 1;
+      }
+      return {
+        t: group.t,
+        cash: null,
+        equity: null,
+        cashPct: Math.max(0, 1 - total),
+        assetPct: total,
+        holdings: holdings,
+      };
+    });
+  }
+
+  function allocationSymbols(rows) {
+    var seen = {};
+    var symbols = [];
+    rows.forEach(function (row) {
+      (row.holdings || []).forEach(function (h) {
+        if (!seen[h.symbol]) {
+          seen[h.symbol] = true;
+          symbols.push(h.symbol);
+        }
+      });
+    });
+    return symbols;
+  }
+
+  function colorForSymbol(symbol, colors, symbols) {
+    if (!symbol || symbols.length <= 1) return colors.up;
+    var idx = symbols.indexOf(symbol);
+    if (idx < 0) idx = 0;
+    return colors.palette[idx % colors.palette.length];
   }
 
   function project(points) {
@@ -683,6 +771,8 @@
     var h = AH - pad.t - pad.b;
     var top = pad.t;
     var bottom = AH - pad.b;
+    var symbols = allocationSymbols(rows);
+    var labelNow = symbols.length === 1 ? symbols[0] : (symbols.length ? symbols.length + ' assets' : 'holdings');
 
     // Stacked-bar layout: N data points → N evenly-spaced bars (Composer
     // style). slotW is the per-bar width budget; gap shrinks to 0 when bars
@@ -712,13 +802,18 @@
       var d = rows[i];
       var bx = pad.l + i * slotW + gap / 2;
       var cashH  = d.cashPct  * h;
-      var assetH = d.assetPct * h;
       // Cash band (bottom)
       ctx.fillStyle = colors.cash;
       ctx.fillRect(bx, bottom - cashH, barW, cashH);
-      // Asset band (stacked above cash)
-      ctx.fillStyle = colors.up;
-      ctx.fillRect(bx, bottom - cashH - assetH, barW, assetH);
+      // Holdings stack above cash. This mirrors Composer-style allocation
+      // history: each symbol keeps its own color band through time.
+      var y = bottom - cashH;
+      (d.holdings || []).forEach(function (holding) {
+        var assetH = holding.pct * h;
+        y -= assetH;
+        ctx.fillStyle = colorForSymbol(holding.symbol, colors, symbols);
+        ctx.fillRect(bx, y, barW, assetH);
+      });
     }
 
     // (Removed trade-marker dots — the bar split itself reflects every
@@ -731,7 +826,14 @@
     var last = rows[rows.length - 1];
     allocationSub.textContent =
       Math.round(last.cashPct * 100) + '% cash / ' +
-      Math.round(last.assetPct * 100) + '% ' + allocationLabel + ' now';
+      Math.round(last.assetPct * 100) + '% ' + labelNow + ' now';
+    if (allocationLegendAssets) {
+      allocationLegendAssets.innerHTML = symbols.map(function (symbol) {
+        return '<span><i class="asset" style="background:' +
+          colorForSymbol(symbol, colors, symbols) + '"></i>' +
+          escapeHtml(symbol) + '</span>';
+      }).join('');
+    }
 
     // Hover: highlight the bar with a 1px outline + tooltip showing exact
     // percentages and the time of that snapshot.
@@ -749,11 +851,13 @@
       ctx.restore();
 
       allocTooltip.hidden = false;
+      var holdingLines = (hv.holdings || []).map(function (holding) {
+        return Math.round(holding.pct * 1000) / 10 + '% ' + holding.symbol;
+      });
+      if (!holdingLines.length) holdingLines = ['No active holding'];
       allocTooltip.querySelector('.t-price').textContent =
-        Math.round(hv.cashPct * 100) + '% cash · ' +
-        Math.round(hv.assetPct * 100) + '% ' + allocationLabel +
-        ' ($' + Math.round(hv.cash).toLocaleString() + ' / $' +
-        Math.round(hv.asset).toLocaleString() + ')';
+        Math.round(hv.cashPct * 1000) / 10 + '% cash · ' +
+        holdingLines.join(' · ');
       allocTooltip.querySelector('.t-time').textContent = fmtTimeShort(hv.t, spanT);
       var tipX = clamp(hbx + barW / 2, 90, AW - 90);
       allocTooltip.style.left = tipX + 'px';
@@ -798,6 +902,11 @@
   }
 
   function clamp(n, lo, hi) { return n < lo ? lo : (n > hi ? hi : n); }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+    });
+  }
   function hexWithAlpha(hex, a) {
     // Accept #rgb / #rrggbb / rgb(...). Fallback: use color-mix at runtime via canvas.
     var c = hex.trim();

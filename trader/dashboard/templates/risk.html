@@ -3,6 +3,17 @@
 {% block heading %}Risk Controls{% endblock %}
 {% block content %}
 
+{% if flash_msg %}
+  <div class="card" style="border-color: rgba(0,255,148,0.28); background: color-mix(in srgb, var(--accent) 8%, var(--bg-1));">
+    <strong class="pos">✓</strong> {{ flash_msg }}
+  </div>
+{% endif %}
+{% if flash_err %}
+  <div class="card" style="border-color: rgba(255,77,109,0.32); background: var(--neg-soft);">
+    <strong style="color: var(--neg);">⚠</strong> {{ flash_err }}
+  </div>
+{% endif %}
+
 {% if not read_only %}
 <div class="card kill-card {{ 'engaged' if kill_engaged else 'armed' }}">
   <div class="kill-head">
@@ -103,29 +114,85 @@
 {% endif %}
 
 <div class="card">
-  <h2>Risk Limits (from config.yaml)</h2>
-  <div class="grid grid-3">
-    <div class="stat">
-      <div class="label">Max position</div>
-      <div class="value">{{ "%.0f%%" | format(cfg.risk.max_position_pct * 100) }}</div>
-      <div style="color:#8b949e; font-size:0.75rem; margin-top:4px">per single symbol</div>
+  <h2>Risk Limits</h2>
+  {% if read_only %}
+    <div class="grid grid-3">
+      <div class="stat">
+        <div class="label">Max position</div>
+        <div class="value">{{ "%.0f%%" | format(cfg.risk.max_position_pct * 100) }}</div>
+        <div style="color:#8b949e; font-size:0.75rem; margin-top:4px">per single symbol</div>
+      </div>
+      <div class="stat">
+        <div class="label">Daily loss cap</div>
+        <div class="value">{{ "%.1f%%" | format(cfg.risk.daily_loss_limit_pct * 100) }}</div>
+        <div style="color:#8b949e; font-size:0.75rem; margin-top:4px">flatten + halt if breached</div>
+      </div>
+      <div class="stat">
+        <div class="label">Min cash buffer</div>
+        <div class="value">{{ "%.0f%%" | format(cfg.risk.min_cash_buffer_pct * 100) }}</div>
+        <div style="color:#8b949e; font-size:0.75rem; margin-top:4px">always held in cash</div>
+      </div>
     </div>
-    <div class="stat">
-      <div class="label">Daily loss cap</div>
-      <div class="value">{{ "%.1f%%" | format(cfg.risk.daily_loss_limit_pct * 100) }}</div>
-      <div style="color:#8b949e; font-size:0.75rem; margin-top:4px">flatten + halt if breached</div>
-    </div>
-    <div class="stat">
-      <div class="label">Min cash buffer</div>
-      <div class="value">{{ "%.0f%%" | format(cfg.risk.min_cash_buffer_pct * 100) }}</div>
-      <div style="color:#8b949e; font-size:0.75rem; margin-top:4px">always held in cash</div>
-    </div>
-  </div>
-  <p style="color:#8b949e; font-size:0.75rem; margin-top:12px">
-    To change: edit <code>config.yaml</code> on the droplet, then
-    <code>sudo systemctl restart trader</code>.
-  </p>
+  {% else %}
+    <form method="post" action="/risk/deploy" autocomplete="off"
+          onsubmit="return confirm('Deploy these risk limits and restart the trader service?');">
+      <div class="grid grid-3">
+        <label class="risk-field">
+          <span>Max position</span>
+          <input type="number" name="max_position_pct" min="0" max="100" step="0.1"
+                 value="{{ '%.1f' | format(cfg.risk.max_position_pct * 100) }}" required>
+          <small>Per single symbol</small>
+        </label>
+        <label class="risk-field">
+          <span>Daily loss cap</span>
+          <input type="number" name="daily_loss_limit_pct" min="0" max="100" step="0.1"
+                 value="{{ '%.1f' | format(cfg.risk.daily_loss_limit_pct * 100) }}" required>
+          <small>Flatten + halt if breached</small>
+        </label>
+        <label class="risk-field">
+          <span>Min cash buffer</span>
+          <input type="number" name="min_cash_buffer_pct" min="0" max="100" step="0.1"
+                 value="{{ '%.1f' | format(cfg.risk.min_cash_buffer_pct * 100) }}" required>
+          <small>Always held in cash</small>
+        </label>
+      </div>
+      <div style="margin-top:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+        <button type="submit">Deploy risk</button>
+        <span class="muted mini">Writes <code>config.yaml</code> and restarts <code>trader</code>.</span>
+      </div>
+    </form>
+  {% endif %}
 </div>
+
+<style>
+  .risk-field {
+    display: block;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: var(--r-md);
+    padding: 14px;
+  }
+  .risk-field span {
+    display: block;
+    color: var(--fg-2);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .risk-field input {
+    width: 100%;
+    font: 700 24px/1 var(--font-mono);
+    color: var(--fg-0);
+  }
+  .risk-field small {
+    display: block;
+    color: var(--fg-2);
+    font-size: 0.75rem;
+    margin-top: 8px;
+  }
+</style>
 
 <div class="card">
   <h2>Daily P&amp;L vs Loss Cap</h2>

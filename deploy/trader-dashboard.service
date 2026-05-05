@@ -16,7 +16,10 @@ StandardOutput=journal
 StandardError=journal
 
 # Hardening
-NoNewPrivileges=true
+# The dashboard has a narrow sudoers grant for restarting only the trader
+# service. NoNewPrivileges would block that grant and make dashboard deploys
+# fail even when /etc/sudoers.d/trader-restart is installed.
+NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/opt/trader/data /opt/trader/config.yaml
