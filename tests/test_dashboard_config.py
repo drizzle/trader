@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import pytest
+from fastapi.testclient import TestClient
+
 from trader.cli import _apply_strategy_update
-from trader.dashboard.app import _apply_risk_update, _restart_trader_service
+from trader.config import load_config
+from trader.dashboard.app import _apply_risk_update, _restart_trader_service, create_app
 
 
 def _config() -> dict:
@@ -91,3 +95,96 @@ def test_restart_trader_uses_sudoers_systemctl_path(monkeypatch) -> None:
         ["sudo", "-n", "/bin/systemctl", "restart", "trader"],
         ["sudo", "-n", "/bin/systemctl", "is-active", "trader"],
     ]
+
+
+def test_dashboard_config_does_not_require_alpaca_keys(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("ALPACA_API_KEY", raising=False)
+    monkeypatch.delenv("ALPACA_SECRET_KEY", raising=False)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+universe: [BTC/USD]
+strategy:
+  name: btc_sma
+  params: {}
+schedule:
+  interval_minutes: 15
+risk:
+  max_position_pct: 1.0
+  daily_loss_limit_pct: 0.03
+  min_cash_buffer_pct: 0.02
+  kill_switch_path: ./data/STOP
+storage:
+  db_filename: trader.db
+"""
+    )
+
+    cfg = load_config(config_path, require_alpaca=False)
+
+    assert cfg.alpaca.api_key == "dashboard-disabled"
+    assert cfg.alpaca.secret_key == "dashboard-disabled"
+
+
+def test_dashboard_write_mode_requires_password(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("DASHBOARD_READ_ONLY", "false")
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+universe: [BTC/USD]
+strategy:
+  name: btc_sma
+  params: {}
+schedule:
+  interval_minutes: 15
+risk:
+  max_position_pct: 1.0
+  daily_loss_limit_pct: 0.03
+  min_cash_buffer_pct: 0.02
+  kill_switch_path: ./data/STOP
+storage:
+  db_filename: trader.db
+"""
+    )
+    cfg = load_config(config_path, require_alpaca=False)
+
+    with pytest.raises(RuntimeError, match="DASHBOARD_PASSWORD"):
+        create_app(cfg)
+
+
+def test_state_changing_post_requires_csrf(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("DASHBOARD_READ_ONLY", "false")
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "secret-pass")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+universe: [BTC/USD]
+strategy:
+  name: btc_sma
+  params: {}
+schedule:
+  interval_minutes: 15
+risk:
+  max_position_pct: 1.0
+  daily_loss_limit_pct: 0.03
+  min_cash_buffer_pct: 0.02
+  kill_switch_path: ./data/STOP
+storage:
+  db_filename: trader.db
+"""
+    )
+    app = create_app(load_config(config_path, require_alpaca=False))
+    client = TestClient(app)
+
+    login = client.post(
+        "/login",
+        data={"username": "trader", "password": "secret-pass"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 303
+
+    response = client.post("/risk/kill-switch/engage", follow_redirects=False)
+
+    assert response.status_code == 403

@@ -380,6 +380,22 @@ open http://localhost:8000
 
 While the SSH session is alive, the dashboard is reachable at `http://localhost:8000`. Close the SSH session and it's gone — no public exposure.
 
+Dashboard settings live in `/opt/trader/dashboard.env`, separate from
+`/opt/trader/.env`. This keeps Alpaca trading keys out of the dashboard process.
+To enable deploy/risk controls:
+
+```bash
+sudo cp /opt/trader/deploy/dashboard.env.example /opt/trader/dashboard.env
+sudo nano /opt/trader/dashboard.env       # set DASHBOARD_PASSWORD and DASHBOARD_READ_ONLY=false
+sudo chown trader:trader /opt/trader/dashboard.env
+sudo chmod 600 /opt/trader/dashboard.env
+sudo systemctl restart trader-dashboard
+```
+
+Leave `DASHBOARD_ENABLE_BROKER_READS=false` unless you deliberately want the
+dashboard to hold Alpaca keys. In the secure default, dashboard deploys can
+rewrite config and restart `trader`, but dashboard-side flattening is disabled.
+
 If you want to access it without re-tunneling each time, add this to `~/.ssh/config` on your laptop:
 ```
 Host trader

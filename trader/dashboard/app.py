@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import base64
+import html as html_lib
 import inspect
 import json
 import resource
@@ -455,6 +456,13 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return val.lower() in {"1", "true", "yes", "on"}
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+
+
 def _login_page(error: str = "") -> HTMLResponse:
     error_html = (
         f"<div class='error'>{error}</div>"
@@ -504,10 +512,35 @@ def _login_page(error: str = "") -> HTMLResponse:
 def create_app(cfg: Config) -> FastAPI:
     dashboard_user = os.environ.get("DASHBOARD_USERNAME", "trader")
     dashboard_password = os.environ.get("DASHBOARD_PASSWORD")
-    require_auth = _env_bool("DASHBOARD_REQUIRE_AUTH", bool(dashboard_password))
     read_only = _env_bool("DASHBOARD_READ_ONLY", True)
-    session_seconds = int(os.environ.get("DASHBOARD_SESSION_SECONDS", "300"))
-    sessions: dict[str, datetime] = {}
+    broker_reads_enabled = _env_bool("DASHBOARD_ENABLE_BROKER_READS", False)
+    require_auth = _env_bool(
+        "DASHBOARD_REQUIRE_AUTH",
+        bool(dashboard_password) or not read_only or cfg.alpaca.live,
+    )
+    if require_auth and not dashboard_password:
+        raise RuntimeError(
+            "DASHBOARD_PASSWORD must be set when auth is required "
+            "(write mode and live mode fail closed)."
+        )
+    session_seconds = _env_int("DASHBOARD_SESSION_SECONDS", 300)
+    sessions: dict[str, dict] = {}
+    login_failures: dict[str, list[float]] = {}
+    action_hits: dict[str, list[float]] = {}
+
+    def _client_key(request: Request) -> str:
+        forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        return forwarded or (request.client.host if request.client else "unknown")
+
+    def _allow_rate(bucket: dict[str, list[float]], key: str, limit: int, window: int) -> bool:
+        now = time.time()
+        hits = [t for t in bucket.get(key, []) if now - t < window]
+        if len(hits) >= limit:
+            bucket[key] = hits
+            return False
+        hits.append(now)
+        bucket[key] = hits
+        return True
 
     def _authenticated(request: Request) -> bool:
         if not require_auth:
@@ -518,11 +551,55 @@ def create_app(cfg: Config) -> FastAPI:
         if not token:
             return False
         now = datetime.now(timezone.utc)
-        last_seen = sessions.get(token)
+        session = sessions.get(token)
+        if session is None:
+            return False
+        last_seen = session.get("last_seen")
         if last_seen is None or now - last_seen > timedelta(seconds=session_seconds):
             sessions.pop(token, None)
             return False
-        sessions[token] = now
+        session["last_seen"] = now
+        return True
+
+    def _session(request: Request) -> dict | None:
+        token = request.cookies.get("trader_session")
+        return sessions.get(token) if token else None
+
+    def _csrf_token(request: Request) -> str:
+        session = _session(request)
+        if not session:
+            return ""
+        token = session.get("csrf")
+        if not token:
+            token = secrets.token_urlsafe(32)
+            session["csrf"] = token
+        return token
+
+    async def _csrf_valid(request: Request) -> bool:
+        if not require_auth:
+            return True
+        session = _session(request)
+        if not session:
+            return False
+        expected = session.get("csrf")
+        if not expected:
+            return False
+        if secrets.compare_digest(request.headers.get("x-csrf-token") or "", expected):
+            return True
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+        supplied = form.get("csrf_token", [""])[0]
+        return bool(supplied) and secrets.compare_digest(supplied, expected)
+
+    def _reauth_valid(form: dict[str, list[str]], request: Request) -> bool:
+        if not require_auth:
+            return True
+        password = form.get("action_password", [""])[0]
+        if not (dashboard_password and secrets.compare_digest(password, dashboard_password)):
+            return False
+        session = _session(request)
+        if session is not None:
+            session["reauth_at"] = datetime.now(timezone.utc)
         return True
 
     app = FastAPI(title="trader dashboard")
@@ -533,12 +610,17 @@ def create_app(cfg: Config) -> FastAPI:
     # only the rendered display is converted.
     templates.env.filters["pacific"] = _to_pacific
 
+    def _with_csrf(request: Request, context: dict) -> dict:
+        return {**context, "csrf_token": _csrf_token(request)}
+
     # Track in-flight backtest jobs so the UI can show a "running" indicator.
     _running_backtests: set[str] = set()
 
     # We instantiate ExecutionClient lazily on each request because a brief
     # Alpaca outage shouldn't bring the dashboard down at startup.
     def _execution() -> ExecutionClient | None:
+        if not broker_reads_enabled:
+            return None
         try:
             return ExecutionClient(cfg.alpaca, Storage(cfg.db_path))
         except Exception:
@@ -553,12 +635,16 @@ def create_app(cfg: Config) -> FastAPI:
         }
         if path not in public_paths and not _authenticated(request):
             return RedirectResponse(url="/login", status_code=303)
+        if request.method == "POST" and path not in {"/login"}:
+            if not await _csrf_valid(request):
+                return JSONResponse({"error": "invalid CSRF token"}, status_code=403)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "same-origin"
         return response
 
     @app.get("/login", response_class=HTMLResponse)
@@ -581,6 +667,9 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.post("/login")
     async def login_submit(request: Request):
+        client = _client_key(request)
+        if not _allow_rate(login_failures, client, limit=8, window=300):
+            return _login_page("Too many login attempts. Wait a few minutes and try again.")
         body = (await request.body()).decode()
         form = parse_qs(body)
         username = form.get("username", [""])[0]
@@ -592,7 +681,12 @@ def create_app(cfg: Config) -> FastAPI:
         if not (user_ok and password_ok):
             return _login_page("Invalid username or password.")
         token = secrets.token_urlsafe(32)
-        sessions[token] = datetime.now(timezone.utc)
+        sessions[token] = {
+            "last_seen": datetime.now(timezone.utc),
+            "csrf": secrets.token_urlsafe(32),
+            "reauth_at": None,
+        }
+        login_failures.pop(client, None)
         response = RedirectResponse(url="/", status_code=303)
         response.set_cookie(
             "trader_session",
@@ -666,7 +760,10 @@ def create_app(cfg: Config) -> FastAPI:
         api_label = "not checked"
         api_latency_ms = None
         ec = _execution()
-        if ec is not None:
+        if not broker_reads_enabled:
+            api_status = "warn"
+            api_label = "broker reads disabled"
+        elif ec is not None:
             api_started = time.perf_counter()
             try:
                 ec.account()
@@ -706,7 +803,7 @@ def create_app(cfg: Config) -> FastAPI:
             selected_strategy, cfg.strategy.name, cfg.strategy.params
         )
         dashboard_latency_ms = (time.perf_counter() - view_started) * 1000
-        return templates.TemplateResponse(request, "strategy.html", {
+        return templates.TemplateResponse(request, "strategy.html", _with_csrf(request, {
             "active_tab": "strategy",
             "cfg": cfg,
             "available_strategies": _available_strategies(cfg.strategy.name),
@@ -733,7 +830,7 @@ def create_app(cfg: Config) -> FastAPI:
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
             "flash_msg": msg,
             "flash_err": err,
-        })
+        }))
 
     @app.get("/strategy/deploy", response_class=HTMLResponse)
     def strategy_deploy_view(request: Request, name: str = "", err: str = ""):
@@ -754,7 +851,7 @@ def create_app(cfg: Config) -> FastAPI:
             )
         details = _strategy_details(name, cfg.strategy.name, cfg.strategy.params)
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
-        return templates.TemplateResponse(request, "strategy_deploy.html", {
+        return templates.TemplateResponse(request, "strategy_deploy.html", _with_csrf(request, {
             "active_tab": "strategy",
             "cfg": cfg,
             "details": details,
@@ -763,9 +860,10 @@ def create_app(cfg: Config) -> FastAPI:
             "current_params": cfg.strategy.params,
             "kill_engaged": kill_engaged,
             "read_only": read_only,
+            "broker_reads_enabled": broker_reads_enabled,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
             "flash_err": err,
-        })
+        }))
 
     @app.post("/strategy/deploy")
     async def strategy_deploy_submit(request: Request):
@@ -783,10 +881,17 @@ def create_app(cfg: Config) -> FastAPI:
         name = (form.get("name", [""])[0] or "").strip()
         flatten = form.get("flatten", [""])[0] == "on"
         confirm = (form.get("confirm", [""])[0] or "").strip()
+        if not _allow_rate(action_hits, f"{_client_key(request)}:strategy", 5, 300):
+            return RedirectResponse(url="/strategy?err=Too+many+strategy+deploy+attempts", status_code=303)
 
         if name not in STRATEGIES:
             return RedirectResponse(
                 url="/strategy?err=Unknown+strategy", status_code=303
+            )
+        if not _reauth_valid(form, request):
+            return RedirectResponse(
+                url=f"/strategy/deploy?name={name}&err=Dashboard+password+did+not+match",
+                status_code=303,
             )
         if confirm != name:
             return RedirectResponse(
@@ -796,6 +901,11 @@ def create_app(cfg: Config) -> FastAPI:
         if name == cfg.strategy.name:
             return RedirectResponse(
                 url=f"/strategy?err={name}+is+already+active", status_code=303,
+            )
+        if flatten and not broker_reads_enabled:
+            return RedirectResponse(
+                url=f"/strategy/deploy?name={name}&err=Flatten+from+dashboard+is+disabled+because+dashboard+does+not+hold+Alpaca+keys",
+                status_code=303,
             )
 
         cmd = [
@@ -877,7 +987,8 @@ def create_app(cfg: Config) -> FastAPI:
             except Exception as e:
                 positions, account_data = [], {"error": str(e)}
         else:
-            positions, account_data = [], {"error": "Alpaca client unavailable"}
+            msg = "Broker reads disabled for dashboard" if not broker_reads_enabled else "Alpaca client unavailable"
+            positions, account_data = [], {"error": msg}
 
         # Compute simple P&L since first equity snapshot.
         pnl = None
@@ -934,7 +1045,7 @@ def create_app(cfg: Config) -> FastAPI:
         # Latest equity-snapshot timestamp + page render time, so the user
         # can see how stale the data is and roughly when the next tick lands.
         latest_equity_ts = equity_curve[-1]["ts_utc"] if equity_curve else None
-        return templates.TemplateResponse(request, "trades.html", {
+        return templates.TemplateResponse(request, "trades.html", _with_csrf(request, {
             "active_tab": "trades",
             "cfg": cfg,
             "kill_engaged": kill_engaged,
@@ -951,7 +1062,7 @@ def create_app(cfg: Config) -> FastAPI:
             "page_generated_at": _to_pacific(datetime.now(timezone.utc)),
             "latest_equity_ts": latest_equity_ts,
             "tick_interval_minutes": cfg.schedule.interval_minutes,
-        })
+        }))
 
     @app.get("/risk", response_class=HTMLResponse)
     def risk_view(request: Request, msg: str = "", err: str = ""):
@@ -991,8 +1102,15 @@ def create_app(cfg: Config) -> FastAPI:
                     daily_loss_pct = (sod_equity - acct.equity) / sod_equity * 100
             except Exception as e:
                 account_data = {"error": str(e)}
+        else:
+            account_data = {
+                "error": (
+                    "Broker reads disabled for dashboard"
+                    if not broker_reads_enabled else "Alpaca client unavailable"
+                )
+            }
 
-        return templates.TemplateResponse(request, "risk.html", {
+        return templates.TemplateResponse(request, "risk.html", _with_csrf(request, {
             "active_tab": "risk",
             "cfg": cfg,
             "kill_engaged": kill_engaged,
@@ -1006,7 +1124,7 @@ def create_app(cfg: Config) -> FastAPI:
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
             "flash_msg": msg,
             "flash_err": err,
-        })
+        }))
 
     @app.post("/risk/deploy")
     async def risk_deploy_submit(request: Request):
@@ -1015,6 +1133,10 @@ def create_app(cfg: Config) -> FastAPI:
 
         body = (await request.body()).decode()
         form = parse_qs(body)
+        if not _allow_rate(action_hits, f"{_client_key(request)}:risk", 8, 300):
+            return RedirectResponse(url="/risk?err=Too+many+risk+change+attempts", status_code=303)
+        if not _reauth_valid(form, request):
+            return RedirectResponse(url="/risk?err=Dashboard+password+did+not+match", status_code=303)
 
         def _pct_field(name: str, label: str) -> float:
             raw = (form.get(name, [""])[0] or "").strip()
@@ -1073,9 +1195,15 @@ def create_app(cfg: Config) -> FastAPI:
         return RedirectResponse(url="/risk", status_code=303)
 
     @app.post("/risk/kill-switch/release")
-    def kill_switch_release():
+    async def kill_switch_release(request: Request):
         if read_only:
             return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+        if not _allow_rate(action_hits, f"{_client_key(request)}:kill-release", 5, 300):
+            return RedirectResponse(url="/risk?err=Too+many+kill-switch+release+attempts", status_code=303)
+        if not _reauth_valid(form, request):
+            return RedirectResponse(url="/risk?err=Dashboard+password+did+not+match", status_code=303)
         kill_path = Path(cfg.risk.kill_switch_path)
         if kill_path.exists():
             kill_path.unlink()
@@ -1102,7 +1230,7 @@ def create_app(cfg: Config) -> FastAPI:
             ),
             key=lambda r: r["mtime"], reverse=True,
         )
-        return templates.TemplateResponse(request, "backtests.html", {
+        return templates.TemplateResponse(request, "backtests.html", _with_csrf(request, {
             "active_tab": "backtests",
             "cfg": cfg,
             "kill_engaged": kill_engaged,
@@ -1110,16 +1238,25 @@ def create_app(cfg: Config) -> FastAPI:
             "available_strategies": _available_strategies(cfg.strategy.name),
             "running_jobs": list(_running_backtests),
             "read_only": read_only,
+            "broker_reads_enabled": broker_reads_enabled,
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
             "flash_msg": msg,
             "flash_err": err,
-        })
+        }))
 
     @app.post("/backtests/run")
     async def backtests_run(request: Request):
-        # Backtests are pure analytics — they never place orders or touch the
-        # broker, so we intentionally allow them even when the dashboard is in
-        # read-only mode (which exists to gate trading actions, not analytics).
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
+        if not broker_reads_enabled:
+            return RedirectResponse(
+                url="/backtests?err=Broker+data+reads+are+disabled+for+the+dashboard",
+                status_code=303,
+            )
+        if not _allow_rate(action_hits, f"{_client_key(request)}:backtests", 3, 900):
+            return RedirectResponse(url="/backtests?err=Too+many+backtest+launches", status_code=303)
+        if len(_running_backtests) >= 1:
+            return RedirectResponse(url="/backtests?err=A+backtest+is+already+running", status_code=303)
         body = (await request.body()).decode()
         form = parse_qs(body)
         strategy = (form.get("strategy", [""])[0] or "").strip()
@@ -1168,9 +1305,17 @@ def create_app(cfg: Config) -> FastAPI:
         path = cfg.data_dir / "backtests" / name
         if not path.exists() or not path.is_file():
             return JSONResponse({"error": "not found"}, status_code=404)
+        report_headers = {
+            "Content-Security-Policy": (
+                "sandbox allow-top-navigation-by-user-activation; "
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"
+            ),
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        }
         # raw=1 serves the report directly (no back bar — used by "Open raw" link).
         if raw:
-            return FileResponse(path, media_type="text/html")
+            return FileResponse(path, media_type="text/html", headers=report_headers)
         # Default: inject a sticky back-bar directly into the report's <body>.
         # This avoids iframe rendering issues (CSP, viewport, white-on-white)
         # while still letting the user return to the dashboard from any report.
@@ -1195,8 +1340,8 @@ def create_app(cfg: Config) -> FastAPI:
             'background:rgba(74,222,128,0.10);'
             '">← Back to Dashboard</a>'
             f'<span style="color:#b8c7be;font-family:ui-monospace,\'JetBrains Mono\',monospace;'
-            f'font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">{name}</span>'
-            f'<a href="/backtests/{name}?raw=1" target="_blank" rel="noopener" style="'
+            f'font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">{html_lib.escape(name)}</span>'
+            f'<a href="/backtests/{html_lib.escape(name)}?raw=1" target="_blank" rel="noopener" style="'
             'color:#6f8479;text-decoration:none;font-size:13px;padding:6px 10px">Open raw ↗</a>'
             '</div>'
         )
@@ -1213,7 +1358,7 @@ def create_app(cfg: Config) -> FastAPI:
                 html = bar + html
         else:
             html = bar + html
-        return HTMLResponse(html)
+        return HTMLResponse(html, headers=report_headers)
 
     @app.get("/healthz")
     def healthz():
@@ -1222,7 +1367,7 @@ def create_app(cfg: Config) -> FastAPI:
     @app.get("/advisors", response_class=HTMLResponse)
     def advisors_view(request: Request, msg: str = "", err: str = ""):
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
-        return templates.TemplateResponse(request, "advisors.html", {
+        return templates.TemplateResponse(request, "advisors.html", _with_csrf(request, {
             "active_tab": "advisors",
             "cfg": cfg,
             "advisor": _advisor_state(cfg),
@@ -1231,15 +1376,21 @@ def create_app(cfg: Config) -> FastAPI:
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
             "flash_msg": msg,
             "flash_err": err,
-        })
+        }))
 
     @app.post("/advisors/refresh")
-    def advisors_refresh(force: int = 0):
+    def advisors_refresh(request: Request, force: int = 0):
         """Run all advisors against the current universe and write the result
         to data/advisors/ai_hedge_fund.json (read by /advisors).
 
         Cached results are reused unless force=1 is set.
         """
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
+        if not _allow_rate(action_hits, f"{_client_key(request)}:advisors", 3, 900):
+            return RedirectResponse("/advisors?err=Too+many+advisor+refreshes", 303)
+        if not broker_reads_enabled:
+            return RedirectResponse("/advisors?err=Broker+data+reads+are+disabled+for+the+dashboard", 303)
         if not cfg.deepseek.enabled:
             return RedirectResponse("/advisors?err=DEEPSEEK_API_KEY+not+configured", 303)
 
@@ -1329,7 +1480,7 @@ def create_app(cfg: Config) -> FastAPI:
     @app.get("/summary", response_class=HTMLResponse)
     def summary_view(request: Request):
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
-        return templates.TemplateResponse(request, "summary.html", {
+        return templates.TemplateResponse(request, "summary.html", _with_csrf(request, {
             "active_tab": "summary",
             "cfg": cfg,
             "kill_engaged": kill_engaged,
@@ -1340,11 +1491,15 @@ def create_app(cfg: Config) -> FastAPI:
             "selected_key": None,
             "user_input": "",
             "error": "",
-        })
+        }))
 
     @app.post("/summary", response_class=HTMLResponse)
     async def summary_run(request: Request):
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
+        if not _allow_rate(action_hits, f"{_client_key(request)}:summary", 8, 900):
+            return JSONResponse({"error": "too many summary requests"}, status_code=429)
         body = (await request.body()).decode()
         form = parse_qs(body)
         key = form.get("prompt_key", [""])[0]
@@ -1362,37 +1517,41 @@ def create_app(cfg: Config) -> FastAPI:
         }
 
         if not cfg.deepseek.enabled:
-            return templates.TemplateResponse(request, "summary.html", {
+            return templates.TemplateResponse(request, "summary.html", _with_csrf(request, {
                 **common_ctx, "result": None,
                 "error": "DEEPSEEK_API_KEY is not configured in /opt/trader/.env",
-            })
+            }))
 
         prompt = PROMPTS_BY_KEY.get(key)
         if prompt is None:
-            return templates.TemplateResponse(request, "summary.html", {
+            return templates.TemplateResponse(request, "summary.html", _with_csrf(request, {
                 **common_ctx, "result": None,
                 "error": f"Unknown prompt key: {key}",
-            })
+            }))
 
         # Optionally fetch market data for grounding.
         contexts = []
         if prompt.needs_market_data:
-            symbols: list[str]
-            if prompt.placeholder_kind == "tickers" and user_input.strip():
-                symbols = [s.strip().upper() for s in user_input.replace(",", " ").split() if s.strip()]
-            elif prompt.placeholder_kind == "tickers":
-                symbols = [s.strip().upper() for s in prompt.placeholder_default.replace(",", " ").split() if s.strip()]
-            else:
-                symbols = list(cfg.universe)
-            try:
-                data_client = DataClient(cfg.alpaca)
-                # Mixed-universe fetcher routes BTC/USD-style symbols through
-                # the crypto endpoint; equity tickers stay on IEX.
-                bars = data_client.bars_for_universe(symbols, lookback_days=300)
-                contexts = [build_context(sym, df) for sym, df in bars.items() if not df.empty]
-            except Exception:
-                # Continue without grounding — LLM will note the limitation.
+            if not broker_reads_enabled:
                 contexts = []
+                symbols = []
+            else:
+                symbols: list[str]
+                if prompt.placeholder_kind == "tickers" and user_input.strip():
+                    symbols = [s.strip().upper() for s in user_input.replace(",", " ").split() if s.strip()]
+                elif prompt.placeholder_kind == "tickers":
+                    symbols = [s.strip().upper() for s in prompt.placeholder_default.replace(",", " ").split() if s.strip()]
+                else:
+                    symbols = list(cfg.universe)
+                try:
+                    data_client = DataClient(cfg.alpaca)
+                    # Mixed-universe fetcher routes BTC/USD-style symbols through
+                    # the crypto endpoint; equity tickers stay on IEX.
+                    bars = data_client.bars_for_universe(symbols, lookback_days=300)
+                    contexts = [build_context(sym, df) for sym, df in bars.items() if not df.empty]
+                except Exception:
+                    # Continue without grounding — LLM will note the limitation.
+                    contexts = []
 
         llm = DeepSeekClient(
             api_key=cfg.deepseek.api_key,
@@ -1402,13 +1561,13 @@ def create_app(cfg: Config) -> FastAPI:
         try:
             result = run_summary(prompt, user_input, llm, contexts)
         except LLMError as e:
-            return templates.TemplateResponse(request, "summary.html", {
+            return templates.TemplateResponse(request, "summary.html", _with_csrf(request, {
                 **common_ctx, "result": None,
                 "error": f"LLM call failed: {e}",
-            })
+            }))
 
-        return templates.TemplateResponse(request, "summary.html", {
+        return templates.TemplateResponse(request, "summary.html", _with_csrf(request, {
             **common_ctx, "result": result, "error": "",
-        })
+        }))
 
     return app

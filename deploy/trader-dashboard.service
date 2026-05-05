@@ -8,7 +8,11 @@ Type=simple
 User=trader
 Group=trader
 WorkingDirectory=/opt/trader
-EnvironmentFile=/opt/trader/.env
+# Keep Alpaca trading keys out of the dashboard process by default. Put only
+# dashboard-specific settings in this file, e.g. DASHBOARD_PASSWORD and
+# DASHBOARD_READ_ONLY=false.
+EnvironmentFile=-/opt/trader/dashboard.env
+Environment=TRADER_LOAD_DOTENV=false
 ExecStart=/opt/trader/.venv/bin/python -m trader dashboard --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=10

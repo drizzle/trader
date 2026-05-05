@@ -37,6 +37,10 @@
     </div>
     <form method="post" action="/risk/kill-switch/release"
           onsubmit="return confirm('Release the kill switch and re-enable trading?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="password" name="action_password" required autocomplete="current-password"
+             placeholder="Dashboard password"
+             style="width: min(360px, 100%); margin: 0 0 12px;">
       <button type="submit" class="btn-release">Release kill switch</button>
     </form>
   {% else %}
@@ -45,6 +49,7 @@
     </div>
     <form method="post" action="/risk/kill-switch/engage"
           onsubmit="return confirm('ENGAGE KILL SWITCH? This will halt all trading on the next tick. You can release it from this page once the issue is resolved.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="btn-engage">Engage kill switch</button>
     </form>
   {% endif %}
@@ -136,6 +141,7 @@
   {% else %}
     <form method="post" action="/risk/deploy" autocomplete="off"
           onsubmit="return confirm('Deploy these risk limits and restart the trader service?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="grid grid-3">
         <label class="risk-field">
           <span>Max position</span>
@@ -156,6 +162,11 @@
           <small>Always held in cash</small>
         </label>
       </div>
+      <label class="risk-password">
+        <span>Dashboard password</span>
+        <input type="password" name="action_password" required autocomplete="current-password"
+               placeholder="required for risk deploy">
+      </label>
       <div style="margin-top:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
         <button type="submit">Deploy risk</button>
         <span class="muted mini">Writes <code>config.yaml</code> and restarts <code>trader</code>.</span>
@@ -171,6 +182,23 @@
     border: 1px solid var(--border-1);
     border-radius: var(--r-md);
     padding: 14px;
+  }
+  .risk-password {
+    display: block;
+    max-width: 420px;
+    margin-top: 14px;
+  }
+  .risk-password span {
+    display: block;
+    color: var(--fg-2);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .risk-password input {
+    width: 100%;
   }
   .risk-field span {
     display: block;

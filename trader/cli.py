@@ -147,7 +147,7 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
     from .config import load_config
     from .strategy import STRATEGIES
 
-    cfg = load_config(args.config)
+    cfg = load_config(args.config, require_alpaca=args.flatten)
     logger.remove()
     logger.add(sys.stderr, level="INFO")
 
@@ -337,7 +337,7 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
         )
         return 1
 
-    cfg = load_config(_strategy_config_path(args.config, args.strategy))
+    cfg = load_config(_strategy_config_path(args.config, args.strategy), require_alpaca=False)
     if args.strategy and cfg.strategy.name != args.strategy:
         cfg = cfg.model_copy(
             update={"strategy": cfg.strategy.model_copy(update={"name": args.strategy})}

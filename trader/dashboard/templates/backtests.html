@@ -16,11 +16,18 @@
 
 <div class="card">
   <h2>Launch backtest</h2>
-  <p class="muted" style="font-size:0.9rem; margin:0 0 14px">
-    Runs in the background on the droplet. The HTML report appears in <em>Saved Reports</em> below when finished
-    — usually within 5–30 seconds depending on years &amp; universe size.
-  </p>
+  {% if broker_reads_enabled %}
+    <p class="muted" style="font-size:0.9rem; margin:0 0 14px">
+      Runs in the background on the droplet. The HTML report appears in <em>Saved Reports</em> below when finished
+      — usually within 5–30 seconds depending on years &amp; universe size.
+    </p>
+  {% else %}
+    <div class="empty" style="margin-bottom:14px">
+      Dashboard broker reads are disabled, so launch new backtests from the droplet CLI.
+    </div>
+  {% endif %}
   <form method="post" action="/backtests/run" class="bt-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label class="bt-field">
       <span>Strategy</span>
       <select name="strategy" required>
@@ -40,7 +47,7 @@
         <option value="10">10 years</option>
       </select>
     </label>
-    <button type="submit" class="bt-launch">Launch backtest</button>
+    <button type="submit" class="bt-launch" {% if not broker_reads_enabled %}disabled{% endif %}>Launch backtest</button>
   </form>
   {% if running_jobs %}
     <div class="bt-running">

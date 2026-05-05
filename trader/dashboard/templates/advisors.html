@@ -35,6 +35,7 @@
   <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap">
     {% if advisor.deepseek_configured %}
       <form method="post" action="/advisors/refresh" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" style="padding:9px 16px; border:0; border-radius:6px;
                 background:#58a6ff; color:#0d1117; font-weight:700; cursor:pointer">
           Refresh now (uses cached results &lt; 1h old)
@@ -42,6 +43,7 @@
       </form>
       <form method="post" action="/advisors/refresh?force=1" style="display:inline"
             onsubmit="return confirm('Force re-run all advisors? This will burn fresh DeepSeek API calls (5 advisors × {{ cfg.universe|length }} symbols).');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" style="padding:9px 16px; border:1px solid #30363d; border-radius:6px;
                 background:transparent; color:#c9d1d9; font-weight:600; cursor:pointer">
           Force fresh re-run

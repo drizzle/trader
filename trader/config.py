@@ -10,8 +10,10 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 
-# Load .env from project root if present. Safe to call multiple times.
-load_dotenv()
+# Load .env from project root by default. The dashboard service disables this
+# so Alpaca trading keys stay out of the dashboard process.
+if os.environ.get("TRADER_LOAD_DOTENV", "true").lower() not in {"0", "false", "no", "off"}:
+    load_dotenv()
 
 
 class AlpacaConfig(BaseModel):
@@ -95,7 +97,7 @@ def _require_env(name: str) -> str:
     return val
 
 
-def load_config(yaml_path: str | Path = "config.yaml") -> Config:
+def load_config(yaml_path: str | Path = "config.yaml", require_alpaca: bool = True) -> Config:
     """Load and validate full config from yaml + environment."""
     yaml_path = Path(yaml_path)
     if not yaml_path.exists():
@@ -106,11 +108,18 @@ def load_config(yaml_path: str | Path = "config.yaml") -> Config:
     data_dir = Path(os.environ.get("DATA_DIR", "./data")).absolute()
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    alpaca = AlpacaConfig(
-        api_key=_require_env("ALPACA_API_KEY"),
-        secret_key=_require_env("ALPACA_SECRET_KEY"),
-        live=os.environ.get("ALPACA_LIVE", "false").lower() == "true",
-    )
+    if require_alpaca:
+        alpaca = AlpacaConfig(
+            api_key=_require_env("ALPACA_API_KEY"),
+            secret_key=_require_env("ALPACA_SECRET_KEY"),
+            live=os.environ.get("ALPACA_LIVE", "false").lower() == "true",
+        )
+    else:
+        alpaca = AlpacaConfig(
+            api_key=os.environ.get("ALPACA_API_KEY", "dashboard-disabled"),
+            secret_key=os.environ.get("ALPACA_SECRET_KEY", "dashboard-disabled"),
+            live=os.environ.get("ALPACA_LIVE", "false").lower() == "true",
+        )
 
     telegram = TelegramConfig(
         bot_token=os.environ.get("TELEGRAM_BOT_TOKEN") or None,

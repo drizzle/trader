@@ -17,6 +17,7 @@
   {% else %}
 
   <form method="post" action="/summary">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div style="display:grid; gap:10px">
       {% for p in prompts %}
         <label style="display:flex; gap:10px; align-items:flex-start; padding:10px;
