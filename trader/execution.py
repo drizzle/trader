@@ -235,3 +235,4 @@ class ExecutionClient:
             self._client.close_all_positions(cancel_orders=True)
         except Exception as e:
             logger.error(f"Failed to flatten positions: {e}")
+            raise

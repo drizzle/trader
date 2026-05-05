@@ -177,10 +177,22 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
             if positions_before:
                 logger.info(f"[2/4] Flattening positions: {positions_before}")
                 ec.close_all_positions()
-                # Brief wait so close orders register at the broker before we
-                # restart the trader process. Not a fill guarantee — Alpaca
-                # accepts the requests well within 3s; fills follow.
-                time.sleep(3)
+                remaining = positions_before
+                for attempt in range(10):
+                    time.sleep(2)
+                    remaining = list(ec.positions().keys())
+                    if not remaining:
+                        break
+                    logger.info(
+                        f"[2/4] Waiting for flatten fills "
+                        f"({attempt + 1}/10): still open {remaining}"
+                    )
+                if remaining:
+                    raise RuntimeError(
+                        "Flatten orders were submitted but positions are still open: "
+                        f"{remaining}. If the market is closed, wait for the close "
+                        "orders to fill or flatten manually before deploying."
+                    )
             else:
                 logger.info("[2/4] No open positions to flatten")
         except Exception as e:

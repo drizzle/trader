@@ -76,7 +76,7 @@ from ..advisors import (
 )
 from ..advisors.cache import RecommendationCache
 from ..advisors.context import build_context
-from ..config import Config
+from ..config import Config, load_config
 from ..data import DataClient
 from ..execution import ExecutionClient
 from ..market_summary import (
@@ -528,6 +528,10 @@ def create_app(cfg: Config) -> FastAPI:
     login_failures: dict[str, list[float]] = {}
     action_hits: dict[str, list[float]] = {}
 
+    def _reload_cfg_from_disk() -> None:
+        nonlocal cfg
+        cfg = load_config(_config_path(), require_alpaca=False)
+
     def _client_key(request: Request) -> str:
         forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
         return forwarded or (request.client.host if request.client else "unknown")
@@ -902,24 +906,21 @@ def create_app(cfg: Config) -> FastAPI:
             return RedirectResponse(
                 url=f"/strategy?err={name}+is+already+active", status_code=303,
             )
-        if flatten and not broker_reads_enabled:
-            return RedirectResponse(
-                url=f"/strategy/deploy?name={name}&err=Flatten+from+dashboard+is+disabled+because+dashboard+does+not+hold+Alpaca+keys",
-                status_code=303,
-            )
-
         cmd = [
             sys.executable, "-m", "trader", "switch-strategy",
             "--name", name, "--restart",
         ]
         if flatten:
             cmd.append("--flatten")
+        child_env = os.environ.copy()
+        if flatten:
+            child_env["TRADER_LOAD_DOTENV"] = "true"
 
         try:
             proc = subprocess.run(
                 cmd,
                 cwd=str(Path(__file__).resolve().parents[2]),
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, text=True, timeout=120, env=child_env,
             )
         except subprocess.TimeoutExpired:
             return RedirectResponse(
@@ -929,6 +930,10 @@ def create_app(cfg: Config) -> FastAPI:
 
         if proc.returncode == 0:
             from urllib.parse import quote
+            try:
+                _reload_cfg_from_disk()
+            except Exception:
+                pass
             return RedirectResponse(
                 url=f"/strategy?msg={quote(f'Deployed {name}. Kill switch is engaged — release it on /risk when ready to trade.')}",
                 status_code=303,

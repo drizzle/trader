@@ -707,7 +707,7 @@
     ctx.stroke();
 
     // X-axis time labels.
-    drawTimeAxis(ctx, colors, pad.l, W - pad.r, H - pad.b, p.minT, p.maxT, p.spanT);
+    drawTimeAxis(ctx, colors, pad.l, W - pad.r, H - pad.b, p.minT, p.maxT, p.spanT, currentRange);
 
     // Hover crosshair + dot + tooltip.
     if (hover && hover.idx != null) {
@@ -821,7 +821,7 @@
     // top of the chart and were redundant with the height changes.)
 
     // X-axis time labels (4 evenly-spaced ticks).
-    drawTimeAxis(ctx, colors, pad.l, AW - pad.r, bottom, minT, maxT, spanT);
+    drawTimeAxis(ctx, colors, pad.l, AW - pad.r, bottom, minT, maxT, spanT, currentRange);
 
     var last = rows[rows.length - 1];
     allocationSub.textContent =
@@ -871,11 +871,19 @@
   // adapts to the visible span — intraday shows H:MM, multi-day shows
   // "May 3", year+ shows "May '26". Forced to Pacific Time for consistency
   // with the rest of the dashboard.
-  function drawTimeAxis(ctx, colors, x0, x1, baseY, minT, maxT, spanT) {
+  function drawTimeAxis(ctx, colors, x0, x1, baseY, minT, maxT, spanT, rangeKey) {
     if (!isFinite(spanT) || spanT <= 0) return;
     var DAY = 86400000;
     var fmtOpts;
-    if (spanT <= 2 * DAY) {
+    if (rangeKey === '1D') {
+      fmtOpts = { timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false };
+    } else if (rangeKey === '1Y') {
+      fmtOpts = { timeZone: 'America/Los_Angeles', month: 'short' };
+    } else if (rangeKey === 'ALL' && spanT > 365 * DAY) {
+      fmtOpts = { timeZone: 'America/Los_Angeles', month: 'short', year: '2-digit' };
+    } else if (rangeKey === '1W' || rangeKey === '1M' || rangeKey === '3M') {
+      fmtOpts = { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' };
+    } else if (spanT <= 2 * DAY) {
       fmtOpts = { timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false };
     } else if (spanT <= 365 * DAY) {
       fmtOpts = { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' };
