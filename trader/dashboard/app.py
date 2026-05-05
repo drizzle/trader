@@ -939,12 +939,17 @@ def create_app(cfg: Config) -> FastAPI:
                 status_code=303,
             )
 
-        # Surface the last useful line of stderr so the user can see why.
+        # Surface the actionable stderr lines so the user can see why. The CLI
+        # often logs a generic "aborting" line after the real failure.
         stderr_lines = [
             ln for ln in (proc.stderr or "").splitlines()
             if ln.strip() and "ERROR" in ln.upper()
         ]
-        last = stderr_lines[-1] if stderr_lines else (proc.stderr or proc.stdout or "")[-300:]
+        actionable = [
+            ln for ln in stderr_lines
+            if "ABORTING SWITCH" not in ln.upper()
+        ] or stderr_lines
+        last = " | ".join(actionable[-2:]) if actionable else (proc.stderr or proc.stdout or "")[-300:]
         from urllib.parse import quote
         return RedirectResponse(
             url=f"/strategy?err={quote(f'Deploy failed (rc={proc.returncode}): {last}')}",
