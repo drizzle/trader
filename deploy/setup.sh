@@ -59,6 +59,7 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
 echo "==> Installing systemd units"
 install -m 644 "${INSTALL_DIR}/deploy/trader.service"           /etc/systemd/system/trader.service
+install -m 644 "${INSTALL_DIR}/deploy/trader@.service"          /etc/systemd/system/trader@.service
 install -m 644 "${INSTALL_DIR}/deploy/trader-dashboard.service" /etc/systemd/system/trader-dashboard.service
 systemctl daemon-reload
 
@@ -72,12 +73,15 @@ echo "       sudo nano ${INSTALL_DIR}/.env       # paste your Alpaca keys"
 echo "       sudo chown ${SERVICE_USER}:${SERVICE_USER} ${INSTALL_DIR}/.env"
 echo "       sudo chmod 600 ${INSTALL_DIR}/.env"
 echo ""
-echo "  2. Start both services:"
+echo "  2. Start dashboard and whichever account services you want active:"
 echo "       sudo cp ${INSTALL_DIR}/deploy/dashboard.env.example ${INSTALL_DIR}/dashboard.env"
 echo "       sudo nano ${INSTALL_DIR}/dashboard.env  # set DASHBOARD_PASSWORD; set DASHBOARD_READ_ONLY=false only when needed"
 echo "       sudo chown ${SERVICE_USER}:${SERVICE_USER} ${INSTALL_DIR}/dashboard.env"
 echo "       sudo chmod 600 ${INSTALL_DIR}/dashboard.env"
-echo "       sudo systemctl enable --now trader"
+echo "       sudo systemctl enable --now trader@paper_account"
+echo "       # optional:"
+echo "       sudo systemctl enable --now trader@live_account"
+echo "       sudo systemctl enable --now trader@Roth_IRA"
 echo "       sudo systemctl enable --now trader-dashboard"
 echo ""
 echo "  3. Watch logs:"

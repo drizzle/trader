@@ -125,6 +125,47 @@ storage:
     assert cfg.alpaca.secret_key == "dashboard-disabled"
 
 
+def test_ira_account_rejects_crypto_strategy(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("ROTH_IRA_ALPACA_API_KEY", "key")
+    monkeypatch.setenv("ROTH_IRA_ALPACA_SECRET_KEY", "secret")
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+active_account: Roth_IRA
+accounts:
+  - id: Roth_IRA
+    type: ira
+    env_prefix: ROTH_IRA
+    live: true
+universe: [BTC/USD]
+strategy:
+  name: btc_sma
+  params:
+    target_symbol: BTC/USD
+schedule:
+  interval_minutes: 15
+risk:
+  max_position_pct: 1.0
+  daily_loss_limit_pct: 0.03
+  min_cash_buffer_pct: 0.02
+  kill_switch_path: ./data/STOP
+storage:
+  db_filename: trader.db
+"""
+    )
+
+    with pytest.raises(ValueError, match="IRA accounts cannot trade crypto"):
+        load_config(config_path, account_id="Roth_IRA")
+
+    cfg = load_config(
+        config_path,
+        require_alpaca=False,
+        account_id="Roth_IRA",
+        validate_strategy=False,
+    )
+    assert cfg.account.id == "Roth_IRA"
+
+
 def test_dashboard_write_mode_requires_password(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("DASHBOARD_READ_ONLY", "false")
     monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)

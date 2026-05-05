@@ -43,6 +43,8 @@ def _apply_strategy_update(raw: dict, name: str, params: dict, universe: list[st
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
+    if args.account:
+        os.environ["TRADER_ACCOUNT"] = args.account
     from .main import run
     run()
     return 0
@@ -55,7 +57,7 @@ def _cmd_backtest(args: argparse.Namespace) -> int:
     from .reports import render_report
     from .strategy import STRATEGIES, build_strategy
 
-    cfg = load_config(_strategy_config_path(args.config, args.strategy))
+    cfg = load_config(_strategy_config_path(args.config, args.strategy), account_id=args.account)
     logger.remove()
     logger.add(sys.stderr, level=cfg.log_level)
 
@@ -144,10 +146,15 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
       0 ok / 1 bad args / 2 flatten failed / 3 config write failed
       4 systemctl restart failed / 5 staged for market open
     """
-    from .config import load_config
+    from .config import load_config, validate_account_strategy
     from .strategy import STRATEGIES
 
-    cfg = load_config(args.config, require_alpaca=args.flatten)
+    cfg = load_config(
+        args.config,
+        require_alpaca=args.flatten,
+        account_id=args.account,
+        validate_strategy=False,
+    )
     logger.remove()
     logger.add(sys.stderr, level="INFO")
 
@@ -241,6 +248,11 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
         return 3
 
     raw = _apply_strategy_update(raw, name, default_params, new_universe)
+    try:
+        validate_account_strategy(cfg.account, raw)
+    except ValueError as e:
+        logger.error(f"[3/4] Strategy is not allowed for account {cfg.account.id}: {e}")
+        return 3
 
     header = (
         "# Strategy + runtime config. Secrets live in .env, NOT here.\n"
@@ -270,21 +282,25 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
     # ---- 4. Restart trader service -----------------------------------------
     if args.restart:
         systemctl = os.environ.get("SYSTEMCTL_BIN", "/bin/systemctl")
+        service_name = os.environ.get(
+            "TRADER_SERVICE_NAME",
+            f"trader@{cfg.account.id}" if len(cfg.accounts) > 1 else "trader",
+        )
         try:
             r = subprocess.run(
-                ["sudo", "-n", systemctl, "restart", "trader"],
+                ["sudo", "-n", systemctl, "restart", service_name],
                 check=True, capture_output=True, text=True, timeout=30,
             )
             time.sleep(2)
             check = subprocess.run(
-                ["sudo", "-n", systemctl, "is-active", "trader"],
+                ["sudo", "-n", systemctl, "is-active", service_name],
                 capture_output=True, text=True, timeout=10,
             )
             state = check.stdout.strip() or "unknown"
-            logger.info(f"[4/4] systemctl restart ok — service is {state}")
+            logger.info(f"[4/4] systemctl restart ok — {service_name} is {state}")
             if state != "active":
                 logger.error(
-                    "Service is not active after restart. Check journalctl -u trader."
+                    f"Service is not active after restart. Check journalctl -u {service_name}."
                 )
                 return 4
         except subprocess.CalledProcessError as e:
@@ -325,7 +341,7 @@ def _cmd_kill_switch(args: argparse.Namespace) -> int:
     """
     from .config import load_config
 
-    cfg = load_config(args.config)
+    cfg = load_config(args.config, account_id=args.account, validate_strategy=False)
     logger.remove()
     logger.add(sys.stderr, level="INFO")
 
@@ -373,7 +389,12 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
         )
         return 1
 
-    cfg = load_config(_strategy_config_path(args.config, args.strategy), require_alpaca=False)
+    cfg = load_config(
+        _strategy_config_path(args.config, args.strategy),
+        require_alpaca=False,
+        account_id=args.account,
+        validate_strategy=False,
+    )
     if args.strategy and cfg.strategy.name != args.strategy:
         cfg = cfg.model_copy(
             update={"strategy": cfg.strategy.model_copy(update={"name": args.strategy})}
@@ -389,10 +410,14 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd")
 
     p_run = sub.add_parser("run", help="Start the live trading bot.")
+    p_run.add_argument("--account", default=None,
+                       help="Configured account id, e.g. Roth_IRA, live_account, paper_account.")
     p_run.set_defaults(func=_cmd_run)
 
     p_bt = sub.add_parser("backtest", help="Run a backtest, output an HTML report.")
     p_bt.add_argument("--config", default="config.yaml")
+    p_bt.add_argument("--account", default=None,
+                      help="Configured account id, e.g. Roth_IRA, live_account, paper_account.")
     p_bt.add_argument("--strategy", default=None,
                       help="Strategy name to backtest (overrides config.yaml). "
                            "E.g. sma_crossover, yypt_tqqq_rsi.")
@@ -413,6 +438,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Switch deployed strategy: optionally flatten, write config, restart trader.",
     )
     p_switch.add_argument("--config", default="config.yaml")
+    p_switch.add_argument("--account", default=None,
+                          help="Configured account id, e.g. Roth_IRA, live_account, paper_account.")
     p_switch.add_argument("--name", required=True,
                           help="Target strategy name (must be registered).")
     p_switch.add_argument("--flatten", action="store_true",
@@ -428,6 +455,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Engage / release / status of the trader kill switch.",
     )
     p_ks.add_argument("--config", default="config.yaml")
+    p_ks.add_argument("--account", default=None,
+                      help="Configured account id, e.g. Roth_IRA, live_account, paper_account.")
     p_ks.add_argument("action", choices=["engage", "release", "status"],
                       help="engage = halt new orders; release = resume; status = check")
     p_ks.add_argument("--reason", default=None,
@@ -436,6 +465,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_dash = sub.add_parser("dashboard", help="Start the FastAPI dashboard.")
     p_dash.add_argument("--config", default="config.yaml")
+    p_dash.add_argument("--account", default=None,
+                        help="Initial configured account id for the dashboard.")
     p_dash.add_argument("--host", default="127.0.0.1",
                         help="Bind host. Keep 127.0.0.1 and access via SSH tunnel.")
     p_dash.add_argument("--port", type=int, default=8000)

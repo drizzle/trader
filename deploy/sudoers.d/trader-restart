@@ -8,4 +8,4 @@
 # To install manually:
 #   sudo install -m 440 deploy/sudoers.d/trader-restart /etc/sudoers.d/trader-restart
 #   sudo visudo -cf /etc/sudoers.d/trader-restart
-trader ALL=(root) NOPASSWD: /bin/systemctl restart trader, /bin/systemctl is-active trader, /usr/bin/systemctl restart trader, /usr/bin/systemctl is-active trader
+trader ALL=(root) NOPASSWD: /bin/systemctl restart trader, /bin/systemctl is-active trader, /bin/systemctl restart trader@*, /bin/systemctl is-active trader@*, /usr/bin/systemctl restart trader, /usr/bin/systemctl is-active trader, /usr/bin/systemctl restart trader@*, /usr/bin/systemctl is-active trader@*

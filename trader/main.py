@@ -7,6 +7,7 @@ import signal
 import subprocess
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 from alpaca.trading.enums import OrderSide
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -68,7 +69,11 @@ def _process_pending_strategy_switch(
         return True
 
     storage.mark_pending_action(pending["id"], "processing")
-    cmd = [sys.executable, "-m", "trader", "switch-strategy", "--name", name]
+    cmd = [
+        sys.executable, "-m", "trader", "switch-strategy",
+        "--account", cfg.account.id,
+        "--name", name,
+    ]
     if payload.get("restart", True):
         cmd.append("--restart")
     if payload.get("flatten", True):
@@ -79,7 +84,7 @@ def _process_pending_strategy_switch(
     try:
         proc = subprocess.run(
             cmd,
-            cwd=str(cfg.data_dir.parent),
+            cwd=str(Path(__file__).resolve().parents[1]),
             capture_output=True,
             text=True,
             timeout=180,

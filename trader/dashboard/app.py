@@ -76,7 +76,7 @@ from ..advisors import (
 )
 from ..advisors.cache import RecommendationCache
 from ..advisors.context import build_context
-from ..config import Config, load_config
+from ..config import Config, load_config, validate_account_strategy
 from ..data import DataClient
 from ..execution import ExecutionClient
 from ..market_summary import (
@@ -538,9 +538,12 @@ def create_app(cfg: Config) -> FastAPI:
     dashboard_password = os.environ.get("DASHBOARD_PASSWORD")
     read_only = _env_bool("DASHBOARD_READ_ONLY", True)
     broker_reads_enabled = _env_bool("DASHBOARD_ENABLE_BROKER_READS", False)
+    sensitive_account_configured = any(
+        a.type.lower() in {"live", "ira"} or bool(a.live) for a in cfg.accounts
+    )
     require_auth = _env_bool(
         "DASHBOARD_REQUIRE_AUTH",
-        bool(dashboard_password) or not read_only or cfg.alpaca.live,
+        bool(dashboard_password) or not read_only or cfg.alpaca.live or sensitive_account_configured,
     )
     if require_auth and not dashboard_password:
         raise RuntimeError(
@@ -554,7 +557,21 @@ def create_app(cfg: Config) -> FastAPI:
 
     def _reload_cfg_from_disk() -> None:
         nonlocal cfg
-        cfg = load_config(_config_path(), require_alpaca=False)
+        cfg = load_config(
+            _config_path(),
+            require_alpaca=False,
+            account_id=cfg.account.id,
+            validate_strategy=False,
+        )
+
+    def _switch_account(account_id: str) -> None:
+        nonlocal cfg
+        cfg = load_config(
+            _config_path(),
+            require_alpaca=False,
+            account_id=account_id,
+            validate_strategy=False,
+        )
 
     def _client_key(request: Request) -> str:
         forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
@@ -639,7 +656,12 @@ def create_app(cfg: Config) -> FastAPI:
     templates.env.filters["pacific"] = _to_pacific
 
     def _with_csrf(request: Request, context: dict) -> dict:
-        return {**context, "csrf_token": _csrf_token(request)}
+        return {
+            **context,
+            "csrf_token": _csrf_token(request),
+            "accounts": cfg.accounts,
+            "active_account": cfg.account,
+        }
 
     # Track in-flight backtest jobs so the UI can show a "running" indicator.
     _running_backtests: set[str] = set()
@@ -768,6 +790,25 @@ def create_app(cfg: Config) -> FastAPI:
     def root_redirect():
         return RedirectResponse(url="/trades", status_code=307)
 
+    @app.post("/account/select")
+    async def account_select(request: Request):
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+        account_id = (form.get("account_id", [""])[0] or "").strip()
+        next_url = (form.get("next", ["/trades"])[0] or "/trades").strip()
+        if not any(a.id == account_id for a in cfg.accounts):
+            return RedirectResponse(url="/strategy?err=Unknown+account", status_code=303)
+        try:
+            _switch_account(account_id)
+        except Exception as e:
+            from urllib.parse import quote
+            return RedirectResponse(
+                url=f"/strategy?err={quote(f'Could not switch account: {e}')}",
+                status_code=303,
+            )
+        safe_next = next_url if next_url.startswith("/") and not next_url.startswith("//") else "/trades"
+        return RedirectResponse(url=safe_next, status_code=303)
+
     @app.get("/strategy", response_class=HTMLResponse)
     def strategy_view(request: Request, msg: str = "", err: str = ""):
         view_started = time.perf_counter()
@@ -818,6 +859,13 @@ def create_app(cfg: Config) -> FastAPI:
         flags = []
         if kill_engaged:
             flags.append("Kill switch is engaged")
+        try:
+            validate_account_strategy(
+                cfg.account,
+                {"universe": cfg.universe, "strategy": cfg.strategy.model_dump()},
+            )
+        except ValueError as e:
+            flags.append(str(e))
         if pending_action:
             target = pending_action.get("payload", {}).get("name", "strategy")
             flags.append(f"Strategy switch staged: {target}")
@@ -938,6 +986,7 @@ def create_app(cfg: Config) -> FastAPI:
             )
         cmd = [
             sys.executable, "-m", "trader", "switch-strategy",
+            "--account", cfg.account.id,
             "--name", name, "--restart",
         ]
         if flatten:
@@ -1361,6 +1410,7 @@ def create_app(cfg: Config) -> FastAPI:
         job_id = f"{strategy}-{years}y-{int(time.time())}"
         cmd = [
             sys.executable, "-m", "trader", "backtest",
+            "--account", cfg.account.id,
             "--strategy", strategy,
             "--start", start.isoformat(),
             "--end", end.isoformat(),

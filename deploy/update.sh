@@ -20,6 +20,7 @@ echo "==> Updating dependencies"
 
 echo "==> Reloading systemd unit files (in case .service files changed)"
 install -m 644 "${INSTALL_DIR}/deploy/trader.service"           /etc/systemd/system/trader.service
+install -m 644 "${INSTALL_DIR}/deploy/trader@.service"          /etc/systemd/system/trader@.service
 install -m 644 "${INSTALL_DIR}/deploy/trader-dashboard.service" /etc/systemd/system/trader-dashboard.service
 systemctl daemon-reload
 
@@ -32,7 +33,10 @@ if ! visudo -cf /etc/sudoers.d/trader-restart >/dev/null; then
 fi
 
 echo "==> Restarting services"
-systemctl restart trader
+systemctl restart trader 2>/dev/null || echo "  (legacy trader service not enabled)"
+for unit in $(systemctl list-units --type=service --state=active 'trader@*.service' --no-legend | awk '{print $1}'); do
+  systemctl restart "$unit"
+done
 systemctl restart trader-dashboard 2>/dev/null || echo "  (dashboard not yet enabled — run: sudo systemctl enable --now trader-dashboard)"
 
 echo "==> Status"

@@ -1,5 +1,30 @@
 # Strategy + runtime config. Secrets live in .env, NOT here.
 
+active_account: paper_account
+
+accounts:
+  - id: Roth_IRA
+    label: Roth IRA
+    type: ira
+    env_prefix: ROTH_IRA
+    live: true
+    data_dir: ./data/Roth_IRA
+    enabled_assets: [us_equity]
+  - id: live_account
+    label: Live Account
+    type: live
+    env_prefix: LIVE
+    live: true
+    data_dir: ./data/live_account
+    enabled_assets: [us_equity, crypto]
+  - id: paper_account
+    label: Paper Account
+    type: paper
+    env_prefix: PAPER
+    live: false
+    data_dir: ./data/paper_account
+    enabled_assets: [us_equity, crypto]
+
 # Universe of tickers the strategy will consider.
 universe:
   - BTC/USD

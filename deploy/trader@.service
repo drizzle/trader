@@ -1,0 +1,27 @@
+[Unit]
+Description=Personal trading bot (Alpaca account %i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trader
+Group=trader
+WorkingDirectory=/opt/trader
+EnvironmentFile=/opt/trader/.env
+Environment=TRADER_ACCOUNT=%i
+ExecStart=/opt/trader/.venv/bin/python -m trader run --account %i
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/trader/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
