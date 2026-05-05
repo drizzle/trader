@@ -156,14 +156,26 @@ def tick(
             continue
 
         # Buying-power gate — only meaningful for BUYs. SELLs reduce exposure
-        # and don't consume cash. Caps qty (or skips) so we don't get rejected
-        # by Alpaca for "insufficient buying power".
+        # and don't consume cash.
         if side == OrderSide.BUY:
-            # Crypto needs a wider slippage buffer than equities — BTC/ETH can
-            # move 1-2% in 15 minutes between bar close and order submission.
-            slippage_buffer = 0.02 if strategy.is_crypto else 0.005
+            # For crypto, cap against `cash`, NOT `buying_power`. Alpaca's
+            # buying_power for paper accounts with stock margin enabled is
+            # 2x cash — but crypto can't be bought on margin, so the broker's
+            # actual constraint is settled cash. Using BP here causes the
+            # exact rejection pattern we hit:
+            #   "insufficient balance for USD (requested: 9811, available: 4903)"
+            # i.e. ordering 2x what's actually spendable.
+            #
+            # Bumped buffer to 5% for crypto so a 1-2% adverse move between
+            # bar close and Alpaca's live ask still leaves slack.
+            if strategy.is_crypto:
+                available = account.cash
+                slippage_buffer = 0.05
+            else:
+                available = account.buying_power
+                slippage_buffer = 0.005
             capped_qty, cap_msg = risk.cap_qty_to_buying_power(
-                order_qty, price, account.buying_power,
+                order_qty, price, available,
                 is_crypto=strategy.is_crypto,
                 slippage_buffer_pct=slippage_buffer,
             )

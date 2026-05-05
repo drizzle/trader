@@ -67,14 +67,44 @@ class ExecutionClient:
         )
 
     def positions(self) -> dict[str, Position]:
+        """Return current positions keyed by symbol.
+
+        Index under BOTH symbol forms for crypto. Alpaca's positions endpoint
+        historically returns crypto as "BTCUSD" (no slash) on some accounts /
+        SDK versions, while the trading endpoint and our strategies use the
+        canonical "BTC/USD" form. If our strategy looks up `positions["BTC/USD"]`
+        and only finds "BTCUSD", `current_qty` falls to 0 and the trader
+        re-issues the full target buy every tick (which is exactly what
+        was happening — Alpaca rejected each one for insufficient cash since
+        the position was already open).
+        """
         out: dict[str, Position] = {}
         for p in self._client.get_all_positions():
-            out[p.symbol] = Position(
-                symbol=p.symbol,
+            sym = p.symbol
+            base_pos = Position(
+                symbol=sym,
                 qty=float(p.qty),
                 market_value=float(p.market_value),
                 avg_entry_price=float(p.avg_entry_price),
             )
+            out[sym] = base_pos
+            # Cross-index the alternate crypto form so lookups work either way.
+            if "/" not in sym and sym.endswith("USD") and len(sym) > 3:
+                alt = f"{sym[:-3]}/USD"
+                out[alt] = Position(
+                    symbol=alt,
+                    qty=base_pos.qty,
+                    market_value=base_pos.market_value,
+                    avg_entry_price=base_pos.avg_entry_price,
+                )
+            elif "/" in sym:
+                alt = sym.replace("/", "")
+                out[alt] = Position(
+                    symbol=alt,
+                    qty=base_pos.qty,
+                    market_value=base_pos.market_value,
+                    avg_entry_price=base_pos.avg_entry_price,
+                )
         return out
 
     def is_market_open(self) -> bool:

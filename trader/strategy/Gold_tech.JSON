@@ -1,0 +1,1341 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2868
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 HelveticaNeue;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\deftab560
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+
+\f0\fs26 \cf0 \{\
+  "description": "(Created with Composer AI)",\
+  "children": [\
+    \{\
+      "children": [\
+        \{\
+          "children": [\
+            \{\
+              "children": [\
+                \{\
+                  "children": [\
+                    \{\
+                      "name": "Tidal Trust II - Defiance Daily Target 2x Short RGTI ETF",\
+                      "ticker": "RGTZ",\
+                      "weight": \{\
+                        "num": "1.5",\
+                        "den": "100"\
+                      \},\
+                      "id": "a09a3b74-ca9b-4563-88f2-17af108ae343",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Tidal Trust II - Defiance Daily Target 2x Short IONQ ETF",\
+                      "ticker": "IONZ",\
+                      "weight": \{\
+                        "num": "1.5",\
+                        "den": "100"\
+                      \},\
+                      "id": "96a4d858-fb9b-435d-b9cf-71209f6c92c9",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Cambria Investment Management LP - Cambria Emerging Shareholder Yield ETF",\
+                      "ticker": "EQUITIES::EYLD//USD",\
+                      "weight": \{\
+                        "num": "2",\
+                        "den": "100"\
+                      \},\
+                      "id": "a4b0f02e-d367-45d8-a940-3e64c58e41bf",\
+                      "exchange": "BATS",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Bank of Montreal - MicroSectors Gold Miners 3X Leveraged ETN",\
+                      "ticker": "GDXU",\
+                      "weight": \{\
+                        "num": "2",\
+                        "den": "100"\
+                      \},\
+                      "id": "32084e26-b05b-4792-9a52-3fbb38065bf1",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "VanEck ETF Trust - VanEck Junior Gold Miners ETF",\
+                      "ticker": "GDXJ",\
+                      "weight": \{\
+                        "num": "2",\
+                        "den": "100"\
+                      \},\
+                      "id": "fc5079a0-8de0-4d41-8a4a-4f88bf95c484",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Amplify ETF Trust - Amplify Junior Silver Miners ETF",\
+                      "ticker": "SILJ",\
+                      "weight": \{\
+                        "num": "2",\
+                        "den": "100"\
+                      \},\
+                      "id": "6844d887-6f0e-4abc-80c1-4cb58a633f9a",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "BlackRock Institutional Trust Company N.A. - iShares MSCI Global Silver and Metals Miners ETF",\
+                      "ticker": "SLVP",\
+                      "weight": \{\
+                        "num": "2",\
+                        "den": "100"\
+                      \},\
+                      "id": "fea209e6-bef5-4161-b3a5-6ebae32e3d2d",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Fidelity Covington Trust - Fidelity High Dividend ETF",\
+                      "ticker": "FDVV",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "16453bd2-5abb-43e7-bcc2-6fe358d0ec99",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Vanguard Group, Inc. - Vanguard High Dividend Yield Indx ETF",\
+                      "ticker": "VYM",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "60a4a7d5-cca3-4f75-a415-dbd46f2d00af",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Vanguard Group, Inc. - Vanguard Dividend Appreciation FTF",\
+                      "ticker": "VIG",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "a21450a2-b554-4ad3-9117-e9425f96c61b",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Schwab Strategic Trust - Schwab US Dividend Equity ETF",\
+                      "ticker": "SCHD",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "781065e9-c781-4dcd-ade2-0d877067887b",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "BlackRock Institutional Trust Company N.A. - iShares Core Dividend Growth ETF",\
+                      "ticker": "DGRO",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "fbb0493a-a5d4-4cba-986a-dc0c4b9c791d",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "SPDR Series Trust - State Street SPDR S&P Dividend ETF",\
+                      "ticker": "SDY",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "95e72987-6504-4eaa-ae31-bfb4d1064c7a",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Vanguard World Fund - Vanguard Energy ETF",\
+                      "ticker": "VDE",\
+                      "weight": \{\
+                        "num": "4",\
+                        "den": "100"\
+                      \},\
+                      "id": "44be6f0b-0ad2-4555-9050-aa641438b0ea",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "BlackRock Institutional Trust Company N.A. - iShares Asia 50 ETF",\
+                      "ticker": "EQUITIES::AIA//USD",\
+                      "weight": \{\
+                        "num": 4,\
+                        "den": 100\
+                      \},\
+                      "id": "f023fdc5-69df-40c0-9ebc-286b789ea46e",\
+                      "exchange": "XNAS",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Grayscale Investments LLC - Grayscale CoinDesk Crypto 5 ETF",\
+                      "ticker": "GDLC",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "de664bdb-91af-4336-bcf2-05520a4fe671",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Direxion Shares ETF Trust - Direxion Daily Aerospace & Defense Bull 3X Shares",\
+                      "ticker": "DFEN",\
+                      "weight": \{\
+                        "num": "4",\
+                        "den": "100"\
+                      \},\
+                      "id": "1f384bc4-f61b-4966-b66c-e0776c79c960",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "VanEck ETF Trust - VanEck Rare Earth/Strategic Metals ETF",\
+                      "ticker": "REMX",\
+                      "weight": \{\
+                        "num": "4",\
+                        "den": "100"\
+                      \},\
+                      "id": "d34af323-ea6a-459d-98e9-d9d4949ecac2",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Global X Funds - Global X CleanTech ETF",\
+                      "ticker": "CTEC",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "90752a2e-610c-418a-b3ba-8d6b82542ebf",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "SPDR Series Trust - State Street SPDR S&P Aerospace & Defense ETF",\
+                      "ticker": "XAR",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "2a3b0b7e-a920-4299-96a3-5087b31a7f25",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "ARK Investment Management LLC - ARK Autonomous Technology & Robotics ETF",\
+                      "ticker": "ARKQ",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "add960ba-265e-4579-9b5f-374831d86fb4",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Tidal Trust II - Defiance Daily Target 2x Short QBTS ETF",\
+                      "ticker": "QBTZ",\
+                      "weight": \{\
+                        "num": "1.5",\
+                        "den": "100"\
+                      \},\
+                      "id": "4b15bc96-6a4b-4605-b887-8aab76a448ad",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "BlackRock Institutional Trust Company N.A. - iShares MSCI Emerging Markets ETF",\
+                      "ticker": "EEM",\
+                      "weight": \{\
+                        "num": "3.00",\
+                        "den": 100\
+                      \},\
+                      "id": "09e70c3c-45b5-443c-a62f-9c782f28f33f",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "SSgA Active Trust - State Street Energy Select Sector SPDR ETF",\
+                      "ticker": "XLE",\
+                      "weight": \{\
+                        "num": "4",\
+                        "den": "100"\
+                      \},\
+                      "id": "5d91db10-c1e3-414a-9314-57dc88c1a83d",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Tortoise Capital Series Trust - Tortoise North American Pipeline Fund ETF",\
+                      "ticker": "TPYP",\
+                      "weight": \{\
+                        "num": 3,\
+                        "den": 100\
+                      \},\
+                      "id": "9f5c4dea-b438-4d9d-ad5c-09a7e51cf3b0",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "RBB Fund Trust - First Eagle Global Equity ETF",\
+                      "ticker": "FEGE",\
+                      "weight": \{\
+                        "num": "2",\
+                        "den": "100"\
+                      \},\
+                      "id": "42673fd7-f265-4fcb-8334-6ad71b1b10a8",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "BlackRock Institutional Trust Company N.A. - iShares Latin America 40 ETF",\
+                      "ticker": "ILF",\
+                      "weight": \{\
+                        "num": "3.50",\
+                        "den": 100\
+                      \},\
+                      "id": "5525f04c-d78f-44e2-9910-c6cfe74ea977",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "BlackRock Institutional Trust Company N.A. - iShares MSCI Intl Value Factor ETF",\
+                      "ticker": "IVLU",\
+                      "weight": \{\
+                        "num": "2",\
+                        "den": "100"\
+                      \},\
+                      "id": "5491363f-09d4-401a-973c-3e28ec8d4974",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Sandisk Corp",\
+                      "ticker": "SNDK",\
+                      "weight": \{\
+                        "num": "3",\
+                        "den": "100"\
+                      \},\
+                      "id": "f6c85a5b-c094-48bb-ab0a-d9881412879e",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Terns Pharmaceuticals Inc",\
+                      "ticker": "TERN",\
+                      "weight": \{\
+                        "num": "3",\
+                        "den": "100"\
+                      \},\
+                      "id": "77eac8df-c252-4ed2-9b21-b7d998dd3413",\
+                      "suppressIncompleteWarnings": false,\
+                      "exchange": "XNAS",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Bloom Energy Corp - Ordinary Shares - Class A",\
+                      "ticker": "BE",\
+                      "weight": \{\
+                        "num": "3.5",\
+                        "den": "100"\
+                      \},\
+                      "id": "51af29f6-5dcb-42ce-9529-0d48690e20df",\
+                      "suppressIncompleteWarnings": false,\
+                      "exchange": "XNYS",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Lumentum Holdings Inc",\
+                      "ticker": "LITE",\
+                      "weight": \{\
+                        "num": "3.5",\
+                        "den": "100"\
+                      \},\
+                      "id": "9b745f99-ab2c-44f2-8411-7b977deeb987",\
+                      "suppressIncompleteWarnings": false,\
+                      "exchange": "XNAS",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Tidal Trust II - Defiance Daily Target 2X Short SMCI ETF",\
+                      "ticker": "SMCZ",\
+                      "weight": \{\
+                        "num": "1.5",\
+                        "den": "100"\
+                      \},\
+                      "id": "ee439893-e06c-439a-b6d3-849f1c9e642c",\
+                      "exchange": "XNYS",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Coherent Corp",\
+                      "ticker": "COHR",\
+                      "weight": \{\
+                        "num": "2.5",\
+                        "den": "100"\
+                      \},\
+                      "id": "4fb8126c-b1d1-4441-8d5d-3b214624cd63",\
+                      "suppressIncompleteWarnings": false,\
+                      "exchange": "XNYS",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Lilly(Eli) & Co",\
+                      "ticker": "LLY",\
+                      "weight": \{\
+                        "num": "2.5",\
+                        "den": "100"\
+                      \},\
+                      "id": "76e1d6fa-d215-4de6-be94-088c1a45277a",\
+                      "suppressIncompleteWarnings": false,\
+                      "exchange": "XNYS",\
+                      "step": "asset"\
+                    \},\
+                    \{\
+                      "name": "Johnson & Johnson",\
+                      "ticker": "JNJ",\
+                      "weight": \{\
+                        "num": "2.5",\
+                        "den": "100"\
+                      \},\
+                      "id": "2d3a9615-5f69-4324-be30-2fa0004652ff",\
+                      "suppressIncompleteWarnings": false,\
+                      "exchange": "XNYS",\
+                      "step": "asset"\
+                    \}\
+                  ],\
+                  "id": "8c75229f-742b-444c-b40d-c7e90eb63ff1",\
+                  "step": "wt-cash-specified"\
+                \}\
+              ],\
+              "lhs-fn-params": \{\
+                "window": 7\
+              \},\
+              "is-else-condition?": false,\
+              "rhs-fixed-value?": true,\
+              "lhs-fn": "max-drawdown",\
+              "lhs-val": "QQQ",\
+              "id": "f577698d-4797-40e0-8c89-f93cd32afc65",\
+              "comparator": "gt",\
+              "rhs-val": "1.75",\
+              "step": "if-child"\
+            \},\
+            \{\
+              "children": [\
+                \{\
+                  "children": [\
+                    \{\
+                      "children": [\
+                        \{\
+                          "children": [\
+                            \{\
+                              "children": [\
+                                \{\
+                                  "name": "NVIDIA Corp",\
+                                  "ticker": "NVDA",\
+                                  "weight": \{\
+                                    "num": "3.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "68a902e6-5e2e-45a7-b364-eee8f51d003f",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Teradyne, Inc.",\
+                                  "ticker": "TER",\
+                                  "weight": \{\
+                                    "num": "3",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "20cc77f2-65ea-4862-af9b-95597752a342",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Advanced Micro Devices Inc.",\
+                                  "ticker": "AMD",\
+                                  "weight": \{\
+                                    "num": "2",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "8b6bd0d7-fd28-4623-822b-383f834b46d1",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Mastec Inc.",\
+                                  "ticker": "MTZ",\
+                                  "weight": \{\
+                                    "num": "3.5",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "1bc7ab65-5078-4e13-a9d4-0dcba7f161a7",\
+                                  "exchange": "XNYS",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Palantir Technologies Inc - Ordinary Shares - Class A",\
+                                  "ticker": "PLTR",\
+                                  "weight": \{\
+                                    "num": "2",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "dbaa307d-c9ff-46fe-a1b6-fc948a17272e",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Bloom Energy Corp - Ordinary Shares - Class A",\
+                                  "ticker": "EQUITIES::BE//USD",\
+                                  "weight": \{\
+                                    "num": "3.5",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "2f8e69c8-4a00-45a3-abec-67a8b6e0f379",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Coherent Corp",\
+                                  "ticker": "EQUITIES::COHR//USD",\
+                                  "weight": \{\
+                                    "num": 2,\
+                                    "den": 100\
+                                  \},\
+                                  "id": "e2dd4efe-5f1c-446f-928d-1b1c750eba72",\
+                                  "exchange": "XNYS",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Broadcom Inc",\
+                                  "ticker": "AVGO",\
+                                  "weight": \{\
+                                    "num": "2",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "85d1212b-f0ef-46e1-a863-5e42672d777c",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Bank of Montreal - MicroSectors Gold Miners 3X Leveraged ETN",\
+                                  "ticker": "EQUITIES::GDXU//USD",\
+                                  "weight": \{\
+                                    "num": "2.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "4a306c86-12af-42ff-a288-7b582559c1fd",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Alphabet Inc - Ordinary Shares - Class A",\
+                                  "ticker": "GOOGL",\
+                                  "weight": \{\
+                                    "num": "2.5",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "4d1ffdee-15bf-434b-a00e-cd8097401193",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Sandisk Corp",\
+                                  "ticker": "SNDK",\
+                                  "weight": \{\
+                                    "num": "4.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "d4a48f8b-fcae-4eca-8c75-aa7f3fd11a35",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Nebius Group N.V. - Ordinary Shares - Class A",\
+                                  "ticker": "NBIS",\
+                                  "weight": \{\
+                                    "num": "2.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "e586d033-5b78-4fa8-a872-922fa39faf36",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Tesla Inc",\
+                                  "ticker": "TSLA",\
+                                  "weight": \{\
+                                    "num": "2.5",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "978f25fe-e9b3-43a9-921e-d646bb8c6980",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Howmet Aerospace Inc",\
+                                  "ticker": "HWM",\
+                                  "weight": \{\
+                                    "num": "3",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "c42edd05-b7c1-4abb-9ab7-a79607b9eaf8",\
+                                  "exchange": "XNYS",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Cisco Systems, Inc.",\
+                                  "ticker": "CSCO",\
+                                  "weight": \{\
+                                    "num": 1.25,\
+                                    "den": 100\
+                                  \},\
+                                  "id": "73e2fda8-f93f-4f20-90f2-81f1d7215bed",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Credo Technology Group Holding Ltd",\
+                                  "ticker": "CRDO",\
+                                  "weight": \{\
+                                    "num": "1.5",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "8ba53ed1-474e-4b09-99b7-0faa03f04617",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Seagate Technology Holdings Plc",\
+                                  "ticker": "STX",\
+                                  "weight": \{\
+                                    "num": "2",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "3851048d-d8cd-4844-88e6-e45dc5b4a8d1",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Crowdstrike Holdings Inc - Ordinary Shares - Class A",\
+                                  "ticker": "CRWD",\
+                                  "weight": \{\
+                                    "num": "2",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "35e055ec-a1fe-412d-9ece-9a6b9d269658",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "BWX Technologies Inc",\
+                                  "ticker": "EQUITIES::BWXT//USD",\
+                                  "weight": \{\
+                                    "num": 2,\
+                                    "den": 100\
+                                  \},\
+                                  "id": "36af3b7b-a559-4c3b-9b66-35348c907d28",\
+                                  "exchange": "XNYS",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Navitas Semiconductor Corp",\
+                                  "ticker": "NVTS",\
+                                  "weight": \{\
+                                    "num": "4",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "892d9221-23a3-446b-9c8b-176078fe09ce",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "GE Vernova Inc.",\
+                                  "ticker": "GEV",\
+                                  "weight": \{\
+                                    "num": "4",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "1cab32c6-1cab-44df-816e-3290b18af8b3",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Micron Technology Inc.",\
+                                  "ticker": "MU",\
+                                  "weight": \{\
+                                    "num": 3,\
+                                    "den": 100\
+                                  \},\
+                                  "id": "965904ab-83bd-4a25-8211-8c2fa4a0d095",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Lumentum Holdings Inc",\
+                                  "ticker": "LITE",\
+                                  "weight": \{\
+                                    "num": "4",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "de4504fa-7e14-4ecf-9c48-2f8165fbe5cd",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Rocket Lab Corp.",\
+                                  "ticker": "RKLB",\
+                                  "weight": \{\
+                                    "num": "2.5",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "ff5ab0ba-73bf-4baf-ba84-f3c41e07b472",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Hut 8 Corp",\
+                                  "ticker": "HUT",\
+                                  "weight": \{\
+                                    "num": "2.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "7c8f554b-61e3-4cdc-872f-9f521db19c5c",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Cambria Investment Management LP - Cambria Emerging Shareholder Yield ETF",\
+                                  "ticker": "EQUITIES::EYLD//USD",\
+                                  "weight": \{\
+                                    "num": 2,\
+                                    "den": 100\
+                                  \},\
+                                  "id": "4be5b0e5-bb7e-416f-af1e-0bdb7172450e",\
+                                  "exchange": "BATS",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Lam Research Corp.",\
+                                  "ticker": "LRCX",\
+                                  "weight": \{\
+                                    "num": "3.50",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "c88695ef-4a06-4c3d-97a0-0f2975b9308e",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Kratos Defense & Security Solutions Inc",\
+                                  "ticker": "KTOS",\
+                                  "weight": \{\
+                                    "num": "2.50",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "776ef76e-c874-40a1-9fad-6a75ef2841c1",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Taiwan Semiconductor Manufacturing - ADR",\
+                                  "ticker": "TSM",\
+                                  "weight": \{\
+                                    "num": "3.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "d90dcdfb-21e4-4f45-9d39-a697c0146ed6",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "IREN Ltd.",\
+                                  "ticker": "IREN",\
+                                  "weight": \{\
+                                    "num": "2.25",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "d7135791-3253-4ade-bcbb-3b7afeca6ba6",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "BlackRock Institutional Trust Company N.A. - iShares MSCI South Korea ETF",\
+                                  "ticker": "EWY",\
+                                  "weight": \{\
+                                    "num": "3.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "512032a3-5ffc-460a-a5d2-68ad8b1e5362",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Fidelity Covington Trust - Fidelity High Dividend ETF",\
+                                  "ticker": "FDVV",\
+                                  "weight": \{\
+                                    "num": "2.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "c9dbaeb3-c215-4553-a13c-8824d8040ddc",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Vanguard Group, Inc. - Vanguard High Dividend Yield Indx ETF",\
+                                  "ticker": "VYM",\
+                                  "weight": \{\
+                                    "num": "2.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "b8654adf-28fe-492d-be61-35ddbee44cf9",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Vanguard Group, Inc. - Vanguard Dividend Appreciation FTF",\
+                                  "ticker": "VIG",\
+                                  "weight": \{\
+                                    "num": "2.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "250ea06a-39e9-4dcf-9dd3-d81a2409834e",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Schwab Strategic Trust - Schwab US Dividend Equity ETF",\
+                                  "ticker": "SCHD",\
+                                  "weight": \{\
+                                    "num": "2.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "489676b6-b9d0-4edf-b0e5-a092ede6020d",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "BlackRock Institutional Trust Company N.A. - iShares Core Dividend Growth ETF",\
+                                  "ticker": "DGRO",\
+                                  "weight": \{\
+                                    "num": "2.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "3a891dbf-958f-4ed0-b702-41096e57cd6c",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Caterpillar Inc.",\
+                                  "ticker": "EQUITIES::CAT//USD",\
+                                  "weight": \{\
+                                    "num": "2",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "14ccaa2d-9bc5-4f82-ab10-a409cb9f8b65",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "SPDR Series Trust - State Street SPDR S&P Dividend ETF",\
+                                  "ticker": "SDY",\
+                                  "weight": \{\
+                                    "num": "2.00",\
+                                    "den": 100\
+                                  \},\
+                                  "id": "1803aee1-97d8-436c-8cf7-ca5b27343297",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "Quanta Services, Inc.",\
+                                  "ticker": "PWR",\
+                                  "weight": \{\
+                                    "num": "2",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "2120f2ff-6d2a-4ba9-969a-4fac5b48f5a5",\
+                                  "suppressIncompleteWarnings": false,\
+                                  "exchange": "XNYS",\
+                                  "step": "asset"\
+                                \},\
+                                \{\
+                                  "name": "EchoStar Corp - Ordinary Shares - Class A",\
+                                  "ticker": "SATS",\
+                                  "weight": \{\
+                                    "num": "2.5",\
+                                    "den": "100"\
+                                  \},\
+                                  "id": "1df19bc6-4219-4dfc-b6d9-1b9e5c41c14a",\
+                                  "suppressIncompleteWarnings": false,\
+                                  "exchange": "XNAS",\
+                                  "step": "asset"\
+                                \}\
+                              ],\
+                              "id": "1f34882b-aaa6-45e1-a673-4f873f801dc3",\
+                              "step": "wt-cash-specified"\
+                            \}\
+                          ],\
+                          "lhs-fn-params": \{\
+                            "window": 90\
+                          \},\
+                          "is-else-condition?": false,\
+                          "rhs-fixed-value?": true,\
+                          "lhs-fn": "max-drawdown",\
+                          "lhs-val": "IBIT",\
+                          "id": "1198a5ee-01c9-4901-83f6-b64d12269aea",\
+                          "comparator": "gt",\
+                          "rhs-val": "2",\
+                          "step": "if-child"\
+                        \},\
+                        \{\
+                          "children": [\
+                            \{\
+                              "children": [\
+                                \{\
+                                  "children": [\
+                                    \{\
+                                      "name": "Cipher Mining Inc",\
+                                      "ticker": "CIFR",\
+                                      "weight": \{\
+                                        "num": "2.50",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "d829db05-1e18-4bf3-88cc-b66138171e4f",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Grayscale Investments LLC - Grayscale CoinDesk Crypto 5 ETF",\
+                                      "ticker": "GDLC",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "28d51bc7-c244-4645-855a-86093b598fb2",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Howmet Aerospace Inc",\
+                                      "ticker": "HWM",\
+                                      "weight": \{\
+                                        "num": 3,\
+                                        "den": 100\
+                                      \},\
+                                      "id": "3745d467-5011-4f3c-8993-18808500903f",\
+                                      "exchange": "XNYS",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Advanced Micro Devices Inc.",\
+                                      "ticker": "AMD",\
+                                      "weight": \{\
+                                        "num": "2.50",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "16dabf68-381b-4afd-a8b8-96a7b5c623dd",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Mastec Inc.",\
+                                      "ticker": "MTZ",\
+                                      "weight": \{\
+                                        "num": "3.25",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "5f0f29db-74b3-44e6-837c-8379a7e97d92",\
+                                      "exchange": "XNYS",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Bank of Montreal - MicroSectors Gold Miners 3X Leveraged ETN",\
+                                      "ticker": "EQUITIES::GDXU//USD",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "9ce50fc3-b95a-4ba6-874b-f4623d8dc403",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Palantir Technologies Inc - Ordinary Shares - Class A",\
+                                      "ticker": "PLTR",\
+                                      "weight": \{\
+                                        "num": 2.5,\
+                                        "den": 100\
+                                      \},\
+                                      "id": "08b07a29-ebbd-41fa-815f-cf5439ea23b9",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Teradyne, Inc.",\
+                                      "ticker": "TER",\
+                                      "weight": \{\
+                                        "num": "2.50",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "7c30e741-ec84-4f25-bbb1-fbd48ad4d8eb",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Robinhood Markets Inc - Ordinary Shares - Class A",\
+                                      "ticker": "EQUITIES::HOOD//USD",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "d7d0cc15-0357-4153-ae46-bc3acb1c6d2d",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Broadcom Inc",\
+                                      "ticker": "AVGO",\
+                                      "weight": \{\
+                                        "num": "2.50",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "a5def978-972e-441e-8cdd-4a76aca542e2",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Cambria Investment Management LP - Cambria Emerging Shareholder Yield ETF",\
+                                      "ticker": "EQUITIES::EYLD//USD",\
+                                      "weight": \{\
+                                        "num": 2,\
+                                        "den": 100\
+                                      \},\
+                                      "id": "e0d2c33f-fdd4-45e6-ae34-0745ae99ac61",\
+                                      "exchange": "BATS",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "ticker": "KEEL",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "953da9d0-ed8f-48a4-b9e2-7e18e17ab7f0",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "NVIDIA Corp",\
+                                      "ticker": "NVDA",\
+                                      "weight": \{\
+                                        "num": "2.50",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "3d6fe79b-28ad-4060-adfe-e7a99316f7bd",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Bloom Energy Corp - Ordinary Shares - Class A",\
+                                      "ticker": "EQUITIES::BE//USD",\
+                                      "weight": \{\
+                                        "num": 3,\
+                                        "den": 100\
+                                      \},\
+                                      "id": "0ba6bac9-ec4a-404d-b79c-3641bb344152",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "BWX Technologies Inc",\
+                                      "ticker": "EQUITIES::BWXT//USD",\
+                                      "weight": \{\
+                                        "num": 1.5,\
+                                        "den": 100\
+                                      \},\
+                                      "id": "089dbec5-1c58-469c-974b-2d7581a6e037",\
+                                      "exchange": "XNYS",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Sandisk Corp",\
+                                      "ticker": "SNDK",\
+                                      "weight": \{\
+                                        "num": "3.5",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "914bf581-43a8-46fa-a894-f5a7559a0ba6",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Alphabet Inc - Ordinary Shares - Class A",\
+                                      "ticker": "GOOGL",\
+                                      "weight": \{\
+                                        "num": "2.5",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "447f5c81-21be-4a63-8f6c-9b9a678dafa4",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Tesla Inc",\
+                                      "ticker": "TSLA",\
+                                      "weight": \{\
+                                        "num": "2.5",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "5fc03ca1-c964-44a7-a12f-760ee3c76bd5",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Cisco Systems, Inc.",\
+                                      "ticker": "CSCO",\
+                                      "weight": \{\
+                                        "num": "2",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "5fc06f87-eb1f-4083-a12c-61128eee76c3",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Seagate Technology Holdings Plc",\
+                                      "ticker": "STX",\
+                                      "weight": \{\
+                                        "num": "2",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "9d59db0f-39cd-4903-972b-9829da77f96c",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Credo Technology Group Holding Ltd",\
+                                      "ticker": "CRDO",\
+                                      "weight": \{\
+                                        "num": "1.5",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "9265da83-5030-4b94-8fd3-27301c7e7ecf",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Crowdstrike Holdings Inc - Ordinary Shares - Class A",\
+                                      "ticker": "CRWD",\
+                                      "weight": \{\
+                                        "num": "1.5",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "ae9ce4a9-0170-46e8-aa27-d823f356dacb",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Micron Technology Inc.",\
+                                      "ticker": "MU",\
+                                      "weight": \{\
+                                        "num": "3",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "92d37272-4220-4097-825e-43c9a72ba68f",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "GE Vernova Inc.",\
+                                      "ticker": "GEV",\
+                                      "weight": \{\
+                                        "num": "3",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "862d8b0b-35c3-489e-ac56-d776e37f4fab",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Amazon.com Inc.",\
+                                      "ticker": "AMZN",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "7e9c7556-6761-4cc0-a395-8fe57109d91c",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Lumentum Holdings Inc",\
+                                      "ticker": "LITE",\
+                                      "weight": \{\
+                                        "num": "3",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "05030686-2949-4209-a26a-226e1ce6199b",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Rocket Lab Corp.",\
+                                      "ticker": "RKLB",\
+                                      "weight": \{\
+                                        "num": "1.50",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "9323ea19-2913-4cc4-8400-1837128ec530",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Hut 8 Corp",\
+                                      "ticker": "HUT",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "3bd8a3f4-9f4a-475b-adb7-614dab27e28a",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Coherent Corp",\
+                                      "ticker": "EQUITIES::COHR//USD",\
+                                      "weight": \{\
+                                        "num": 2.5,\
+                                        "den": 100\
+                                      \},\
+                                      "id": "da560b45-6618-46f1-aad0-557f12c8cd61",\
+                                      "exchange": "XNYS",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Taiwan Semiconductor Manufacturing - ADR",\
+                                      "ticker": "TSM",\
+                                      "weight": \{\
+                                        "num": "2.50",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "ac3b9edd-6d21-4c53-af93-246c5f8964a2",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "IREN Ltd.",\
+                                      "ticker": "IREN",\
+                                      "weight": \{\
+                                        "num": "1.50",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "a7df9ba4-fefc-4551-a491-1c536112381f",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "iShares Bitcoin Trust ETF - iShares Bitcoin Trust Beneficial Interest",\
+                                      "ticker": "IBIT",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "07e1d411-0971-4d0c-8d36-37df273fd3b6",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "iShares Ethereum Trust (The) - Undivided Beneficial Interest",\
+                                      "ticker": "ETHA",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "5a11bbd7-08c3-4c17-9eac-90d18331fbd0",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "BlackRock Institutional Trust Company N.A. - iShares MSCI South Korea ETF",\
+                                      "ticker": "EWY",\
+                                      "weight": \{\
+                                        "num": "2",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "2c0b83a1-cabf-410b-8123-25cf61ffa98a",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Fidelity Covington Trust - Fidelity High Dividend ETF",\
+                                      "ticker": "FDVV",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "79ebc29f-b761-4e3c-8327-4ebd3792806f",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Vanguard Group, Inc. - Vanguard High Dividend Yield Indx ETF",\
+                                      "ticker": "VYM",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "dbe09625-3f8e-4b7a-81bc-d23c1f0af257",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Vanguard Group, Inc. - Vanguard Dividend Appreciation FTF",\
+                                      "ticker": "VIG",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "675e5e90-e8b3-4bc3-9166-7f6fa6b77cda",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Schwab Strategic Trust - Schwab US Dividend Equity ETF",\
+                                      "ticker": "SCHD",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "cea35a2c-141e-4af4-861c-c5ca54cdd50f",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "BlackRock Institutional Trust Company N.A. - iShares Core Dividend Growth ETF",\
+                                      "ticker": "DGRO",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "5e04a6ff-e6e5-4a5c-9d11-40cee9afbb92",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Caterpillar Inc.",\
+                                      "ticker": "EQUITIES::CAT//USD",\
+                                      "weight": \{\
+                                        "num": "2",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "aadea698-e986-4011-a691-a412e95234de",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "SPDR Series Trust - State Street SPDR S&P Dividend ETF",\
+                                      "ticker": "SDY",\
+                                      "weight": \{\
+                                        "num": "2.00",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "53d393ac-5183-4443-ba76-2df4e501081d",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Valkyrie ETF Trust II - CoinShares Bitcoin Mining ETF",\
+                                      "ticker": "WGMI",\
+                                      "weight": \{\
+                                        "num": "1.75",\
+                                        "den": 100\
+                                      \},\
+                                      "id": "2600b4dd-93c4-4696-8f16-23af342e409a",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "Navitas Semiconductor Corp",\
+                                      "ticker": "NVTS",\
+                                      "weight": \{\
+                                        "num": 3.5,\
+                                        "den": 100\
+                                      \},\
+                                      "id": "611ec9ad-2ebe-48b1-acea-6d64256ea9d5",\
+                                      "suppressIncompleteWarnings": false,\
+                                      "exchange": "XNAS",\
+                                      "step": "asset"\
+                                    \},\
+                                    \{\
+                                      "name": "EchoStar Corp - Ordinary Shares - Class A",\
+                                      "ticker": "SATS",\
+                                      "weight": \{\
+                                        "num": "2.5",\
+                                        "den": "100"\
+                                      \},\
+                                      "id": "a3068c57-27f0-457a-81f4-e2018736abab",\
+                                      "suppressIncompleteWarnings": false,\
+                                      "exchange": "XNAS",\
+                                      "step": "asset"\
+                                    \}\
+                                  ],\
+                                  "id": "fe99faed-c3d3-47e6-a8b8-a1f516a50e65",\
+                                  "step": "wt-cash-specified"\
+                                \}\
+                              ],\
+                              "id": "ab8f565f-6b20-422a-96f5-692ec1b3d5ce",\
+                              "step": "wt-cash-equal"\
+                            \}\
+                          ],\
+                          "is-else-condition?": true,\
+                          "id": "5893c641-6e09-4c55-b7a6-a94a9b365e6f",\
+                          "step": "if-child"\
+                        \}\
+                      ],\
+                      "id": "c622410f-b451-4693-992e-b02a240162f5",\
+                      "step": "if"\
+                    \}\
+                  ],\
+                  "id": "10286b3f-928e-4b4a-99ed-54f7b7cffe74",\
+                  "step": "wt-cash-equal"\
+                \}\
+              ],\
+              "is-else-condition?": true,\
+              "id": "a9d0af07-b378-43b6-88dd-3c246742afcf",\
+              "step": "if-child"\
+            \}\
+          ],\
+          "id": "e2759b16-3a93-4aad-8c7f-d5d469b925b7",\
+          "step": "if"\
+        \}\
+      ],\
+      "id": "e844c39b-dc05-4cb9-b74d-2b6920019550",\
+      "step": "wt-cash-equal"\
+    \}\
+  ],\
+  "name": "Golden Tech",\
+  "rebalance": "daily",\
+  "id": "z5WRMeAAqHtMGSvWaNHI",\
+  "step": "root"\
+\}}
