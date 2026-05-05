@@ -6,13 +6,17 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from alpaca.trading.enums import OrderSide
+
 from trader.config import RiskConfig
 from trader.backtest import run_backtest
+from trader.main import _enforce_cash_buffer
 from trader.risk import RiskCheck
 from trader.composer_research import parse_composer_json
 from trader.storage import Storage
@@ -136,6 +140,40 @@ class _WarmupStrategy(Strategy):
         return [Signal("SPY", target, f"history={len(bars['SPY'])}")]
 
 
+class _CashBufferStrategy(Strategy):
+    name = "cash-buffer-test"
+
+    @property
+    def universe(self) -> list[str]:
+        return ["BTC/USD"]
+
+    def compute(self, bars: dict[str, pd.DataFrame]) -> list[Signal]:
+        return []
+
+
+class _Alerts:
+    def __init__(self):
+        self.messages: list[str] = []
+
+    def send(self, message: str) -> None:
+        self.messages.append(message)
+
+
+class _Execution:
+    def __init__(self, pending=None):
+        self.pending = pending or {}
+        self.submitted: list[tuple[str, float, OrderSide, str]] = []
+
+    def open_orders_for(self, symbol: str) -> list[object]:
+        return self.pending.get(symbol, [])
+
+    def submit_market_order(
+        self, *, symbol: str, qty: float, side: OrderSide, strategy: str
+    ) -> str:
+        self.submitted.append((symbol, qty, side, strategy))
+        return f"order-{len(self.submitted)}"
+
+
 def test_backtest_uses_pre_start_history_for_indicator_warmup():
     bars = {"SPY": _bars_from_closes([100.0] * 10)}
 
@@ -149,6 +187,81 @@ def test_backtest_uses_pre_start_history_for_indicator_warmup():
     assert result.start == bars["SPY"].index[5]
     assert result.trades[0].timestamp == bars["SPY"].index[5]
     assert result.trades[0].rationale == "history=5"
+
+
+def test_cash_buffer_waits_for_pending_broker_order():
+    with tempfile.TemporaryDirectory() as tmp:
+        storage = Storage(Path(tmp) / "test.db")
+        execution = _Execution(pending={"SPY": [SimpleNamespace(client_order_id="pending")]})
+
+        handled = _enforce_cash_buffer(
+            cfg=SimpleNamespace(risk=RiskConfig(min_cash_buffer_pct=0.2)),
+            account=SimpleNamespace(equity=1000.0, cash=0.0),
+            positions={
+                "SPY": SimpleNamespace(symbol="SPY", qty=10.0, market_value=1000.0),
+            },
+            execution=execution,
+            storage=storage,
+            strategy=_CashBufferStrategy(),
+            alerts=_Alerts(),
+        )
+
+        assert handled is True
+        assert execution.submitted == []
+
+
+def test_cash_buffer_waits_for_pending_local_order():
+    with tempfile.TemporaryDirectory() as tmp:
+        storage = Storage(Path(tmp) / "test.db")
+        storage.record_order_submitted(
+            client_order_id="trader-local-pending",
+            broker_order_id=None,
+            symbol="SPY",
+            side="sell",
+            qty=1.0,
+            order_type="market",
+            limit_price=None,
+            strategy="cash-buffer-test:cash_buffer",
+        )
+        execution = _Execution()
+
+        handled = _enforce_cash_buffer(
+            cfg=SimpleNamespace(risk=RiskConfig(min_cash_buffer_pct=0.2)),
+            account=SimpleNamespace(equity=1000.0, cash=0.0),
+            positions={
+                "SPY": SimpleNamespace(symbol="SPY", qty=10.0, market_value=1000.0),
+            },
+            execution=execution,
+            storage=storage,
+            strategy=_CashBufferStrategy(),
+            alerts=_Alerts(),
+        )
+
+        assert handled is True
+        assert execution.submitted == []
+
+
+def test_cash_buffer_submits_once_without_pending_orders():
+    with tempfile.TemporaryDirectory() as tmp:
+        storage = Storage(Path(tmp) / "test.db")
+        execution = _Execution()
+
+        handled = _enforce_cash_buffer(
+            cfg=SimpleNamespace(risk=RiskConfig(min_cash_buffer_pct=0.2)),
+            account=SimpleNamespace(equity=1000.0, cash=0.0),
+            positions={
+                "SPY": SimpleNamespace(symbol="SPY", qty=10.0, market_value=1000.0),
+            },
+            execution=execution,
+            storage=storage,
+            strategy=_CashBufferStrategy(),
+            alerts=_Alerts(),
+        )
+
+        assert handled is True
+        assert execution.submitted == [
+            ("SPY", 2.0, OrderSide.SELL, "cash-buffer-test:cash_buffer")
+        ]
 
 
 def test_risk_position_size_limit():

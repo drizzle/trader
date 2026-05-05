@@ -74,6 +74,7 @@ def _enforce_cash_buffer(
     account: object,
     positions: dict[str, object],
     execution: ExecutionClient,
+    storage: Storage,
     strategy: Strategy,
     alerts: Alerts,
 ) -> bool:
@@ -90,19 +91,6 @@ def _enforce_cash_buffer(
         )
         return False
 
-    logger.warning(
-        f"Cash buffer breach: cash=${account.cash:,.2f}, required=${required_cash:,.2f}. "
-        f"Trimming about ${cash_shortfall:,.2f} of exposure."
-    )
-    alerts.send(
-        f"⚠️ *Cash buffer breach*\nCash ${account.cash:,.2f} is below required "
-        f"${required_cash:,.2f}. Trimming positions."
-    )
-    try:
-        execution.cancel_open_orders()
-    except Exception as e:
-        logger.warning(f"Could not cancel open orders before cash-buffer trim: {e}")
-
     strategy_symbols = set(strategy.universe)
     ordered = sorted(
         unique,
@@ -111,6 +99,27 @@ def _enforce_cash_buffer(
             -float(getattr(p, "market_value")),
         ),
     )
+    for p in ordered:
+        symbol = getattr(p, "symbol")
+        pending_broker = execution.open_orders_for(symbol)
+        pending_local = storage.open_orders(symbol)
+        if pending_broker or pending_local:
+            logger.info(
+                f"Cash buffer breach: cash=${account.cash:,.2f}, "
+                f"required=${required_cash:,.2f}; waiting for existing open order(s) "
+                f"on {symbol} (broker={len(pending_broker)}, local={len(pending_local)})"
+            )
+            return True
+
+    logger.warning(
+        f"Cash buffer breach: cash=${account.cash:,.2f}, required=${required_cash:,.2f}. "
+        f"Trimming about ${cash_shortfall:,.2f} of exposure."
+    )
+    alerts.send(
+        f"⚠️ *Cash buffer breach*\nCash ${account.cash:,.2f} is below required "
+        f"${required_cash:,.2f}. Trimming positions."
+    )
+
     remaining = cash_shortfall
     submitted = False
     for p in ordered:
@@ -249,6 +258,7 @@ def tick(
         f"Account: equity=${account.equity:,.2f} cash=${account.cash:,.2f} "
         f"bp=${account.buying_power:,.2f} mode={'LIVE' if execution.live else 'PAPER'}"
     )
+    execution.reconcile_recent_orders(lookback_minutes=240)
 
     if _process_pending_strategy_switch(storage=storage, execution=execution, cfg=cfg):
         return
@@ -279,6 +289,7 @@ def tick(
         account=account,
         positions=positions,
         execution=execution,
+        storage=storage,
         strategy=strategy,
         alerts=alerts,
     ):

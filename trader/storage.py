@@ -73,6 +73,17 @@ CREATE INDEX IF NOT EXISTS idx_positions_snapshot_ts ON position_snapshots(snaps
 CREATE INDEX IF NOT EXISTS idx_pending_actions_status ON pending_actions(kind, status, id);
 """
 
+OPEN_ORDER_STATUSES = {
+    "submitted",
+    "new",
+    "accepted",
+    "pending_new",
+    "partially_filled",
+    "pending_cancel",
+    "pending_replace",
+    "accepted_for_bidding",
+}
+
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
@@ -257,6 +268,21 @@ class Storage:
             except Exception:
                 out["payload"] = {}
             return out
+
+    def open_orders(self, symbol: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        placeholders = ",".join("?" for _ in OPEN_ORDER_STATUSES)
+        params: list[Any] = list(OPEN_ORDER_STATUSES)
+        where = f"status IN ({placeholders})"
+        if symbol:
+            where += " AND symbol = ?"
+            params.append(symbol)
+        params.append(limit)
+        with self._conn() as c:
+            rows = c.execute(
+                f"SELECT * FROM orders WHERE {where} ORDER BY id DESC LIMIT ?",
+                params,
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def recent_orders(self, limit: int = 20) -> list[dict[str, Any]]:
         with self._conn() as c:

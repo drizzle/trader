@@ -198,24 +198,52 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
                         f"action_id={action_id} target={name}"
                     )
                     return 5
-                logger.info(f"[2/4] Flattening positions: {positions_before}")
-                ec.close_all_positions()
-                remaining = positions_before
-                for attempt in range(10):
-                    time.sleep(2)
-                    remaining = list(ec.positions().keys())
-                    if not remaining:
-                        break
+                pending = {
+                    symbol: ec.open_orders_for(symbol)
+                    for symbol in positions_before
+                }
+                pending = {symbol: orders for symbol, orders in pending.items() if orders}
+                if pending:
                     logger.info(
-                        f"[2/4] Waiting for flatten fills "
-                        f"({attempt + 1}/10): still open {remaining}"
+                        "[2/4] Existing open flatten/order(s) detected; waiting instead "
+                        f"of submitting another close: {list(pending.keys())}"
                     )
-                if remaining:
-                    raise RuntimeError(
-                        "Flatten orders were submitted but positions are still open: "
-                        f"{remaining}. If the market is closed, wait for the close "
-                        "orders to fill or flatten manually before deploying."
-                    )
+                    remaining = positions_before
+                    for attempt in range(10):
+                        time.sleep(2)
+                        remaining = list(ec.positions().keys())
+                        if not remaining:
+                            break
+                        logger.info(
+                            f"[2/4] Waiting for existing close fills "
+                            f"({attempt + 1}/10): still open {remaining}"
+                        )
+                    if remaining:
+                        raise RuntimeError(
+                            "Existing open orders are still settling for: "
+                            f"{list(pending.keys())}. Wait for those orders to fill, "
+                            "cancel them manually, or stage the switch until market open."
+                        )
+                    logger.info("[2/4] Existing close orders flattened all positions")
+                else:
+                    logger.info(f"[2/4] Flattening positions: {positions_before}")
+                    ec.close_all_positions()
+                    remaining = positions_before
+                    for attempt in range(10):
+                        time.sleep(2)
+                        remaining = list(ec.positions().keys())
+                        if not remaining:
+                            break
+                        logger.info(
+                            f"[2/4] Waiting for flatten fills "
+                            f"({attempt + 1}/10): still open {remaining}"
+                        )
+                    if remaining:
+                        raise RuntimeError(
+                            "Flatten orders were submitted but positions are still open: "
+                            f"{remaining}. If the market is closed, wait for the close "
+                            "orders to fill or flatten manually before deploying."
+                        )
             else:
                 logger.info("[2/4] No open positions to flatten")
         except Exception as e:
