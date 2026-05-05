@@ -183,3 +183,44 @@ def test_storage_records_and_reads_equity():
         # ts in the future returns the most recent snapshot
         eq = storage.equity_at_or_before("2099-01-01T00:00:00+00:00")
         assert eq == 100000.0
+
+
+def test_storage_records_latest_position_snapshot():
+    with tempfile.TemporaryDirectory() as tmp:
+        storage = Storage(Path(tmp) / "test.db")
+        ts = storage.record_position_snapshot([
+            {
+                "symbol": "SPY",
+                "qty": 13,
+                "market_value": 9349.60,
+                "avg_entry_price": 717.46,
+            }
+        ])
+        latest_ts, positions = storage.latest_position_snapshot()
+        assert latest_ts == ts
+        assert positions == [{
+            "symbol": "SPY",
+            "qty": 13.0,
+            "market_value": 9349.60,
+            "avg_entry_price": 717.46,
+        }]
+
+        empty_ts = storage.record_position_snapshot([])
+        latest_ts, positions = storage.latest_position_snapshot()
+        assert latest_ts == empty_ts
+        assert positions == []
+
+
+def test_staging_strategy_switch_replaces_existing_pending_action():
+    with tempfile.TemporaryDirectory() as tmp:
+        storage = Storage(Path(tmp) / "test.db")
+        first = storage.stage_strategy_switch(
+            "btc_sma", flatten=True, restart=True, reason="first"
+        )
+        second = storage.stage_strategy_switch(
+            "Golden Tech", flatten=True, restart=True, reason="second"
+        )
+        pending = storage.latest_pending_action("strategy_switch")
+        assert pending["id"] == second
+        assert pending["id"] != first
+        assert pending["payload"]["name"] == "Golden Tech"

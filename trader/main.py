@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import math
+import os
 import signal
+import subprocess
 import sys
 from datetime import datetime, timezone
 
@@ -18,6 +20,84 @@ from .execution import ExecutionClient
 from .risk import RiskCheck
 from .storage import Storage
 from .strategy import Signal, Strategy, build_strategy
+
+
+def _position_snapshot_rows(positions: dict[str, object]) -> list[dict[str, float | str]]:
+    values = list(positions.values())
+    symbols = {getattr(p, "symbol") for p in values}
+    rows: list[dict[str, float | str]] = []
+    seen: set[str] = set()
+    for p in values:
+        symbol = getattr(p, "symbol")
+        if (
+            "/" not in symbol
+            and symbol.endswith("USD")
+            and f"{symbol[:-3]}/USD" in symbols
+        ):
+            continue
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        rows.append({
+            "symbol": symbol,
+            "qty": float(getattr(p, "qty")),
+            "market_value": float(getattr(p, "market_value")),
+            "avg_entry_price": float(getattr(p, "avg_entry_price")),
+        })
+    return rows
+
+
+def _process_pending_strategy_switch(
+    *,
+    storage: Storage,
+    execution: ExecutionClient,
+    cfg: Config,
+) -> bool:
+    pending = storage.latest_pending_action("strategy_switch")
+    if not pending:
+        return False
+
+    payload = pending.get("payload", {})
+    name = str(payload.get("name") or "")
+    if not name:
+        storage.mark_pending_action(pending["id"], "failed", "missing target strategy")
+        return False
+
+    if not execution.is_market_open():
+        logger.info(f"Strategy switch to {name} is staged; waiting for market open")
+        return True
+
+    storage.mark_pending_action(pending["id"], "processing")
+    cmd = [sys.executable, "-m", "trader", "switch-strategy", "--name", name]
+    if payload.get("restart", True):
+        cmd.append("--restart")
+    if payload.get("flatten", True):
+        cmd.append("--flatten")
+
+    env = os.environ.copy()
+    env["TRADER_LOAD_DOTENV"] = "true"
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cfg.data_dir.parent),
+            capture_output=True,
+            text=True,
+            timeout=180,
+            env=env,
+        )
+    except Exception as e:
+        storage.mark_pending_action(pending["id"], "pending", str(e))
+        logger.error(f"Staged strategy switch to {name} failed to launch: {e}")
+        return True
+
+    if proc.returncode == 0:
+        storage.mark_pending_action(pending["id"], "completed")
+        logger.info(f"Completed staged strategy switch to {name}")
+    else:
+        detail = (proc.stderr or proc.stdout or "").strip()[-500:]
+        storage.mark_pending_action(pending["id"], "pending", detail)
+        logger.error(f"Staged strategy switch to {name} failed rc={proc.returncode}: {detail}")
+    return True
 
 
 def _setup_logging(cfg: Config) -> None:
@@ -46,6 +126,26 @@ def tick(
     """One pass of the trading loop. Called by the scheduler."""
     logger.debug("--- tick start ---")
 
+    # 1. Snapshot broker state for the dashboard. This is read-only and runs
+    # even while halted, so the dashboard does not need Alpaca credentials.
+    try:
+        account = execution.account()
+        positions = execution.positions()
+    except Exception as e:
+        logger.error(f"Failed to fetch account: {e}")
+        alerts.send(f"⚠️ Trader: failed to fetch account: {e}")
+        return
+
+    storage.record_equity(account.cash, account.equity, account.buying_power)
+    storage.record_position_snapshot(_position_snapshot_rows(positions))
+    logger.info(
+        f"Account: equity=${account.equity:,.2f} cash=${account.cash:,.2f} "
+        f"bp=${account.buying_power:,.2f} mode={'LIVE' if execution.live else 'PAPER'}"
+    )
+
+    if _process_pending_strategy_switch(storage=storage, execution=execution, cfg=cfg):
+        return
+
     if risk.kill_switch_engaged():
         logger.warning("Kill switch engaged — skipping tick")
         return
@@ -54,20 +154,6 @@ def tick(
     if not strategy.is_crypto and not execution.is_market_open():
         logger.debug("Market closed — skipping tick")
         return
-
-    # 1. Snapshot account state.
-    try:
-        account = execution.account()
-    except Exception as e:
-        logger.error(f"Failed to fetch account: {e}")
-        alerts.send(f"⚠️ Trader: failed to fetch account: {e}")
-        return
-
-    storage.record_equity(account.cash, account.equity, account.buying_power)
-    logger.info(
-        f"Account: equity=${account.equity:,.2f} cash=${account.cash:,.2f} "
-        f"bp=${account.buying_power:,.2f} mode={'LIVE' if execution.live else 'PAPER'}"
-    )
 
     # 2. Daily-loss circuit breaker.
     daily = risk.check_daily_loss(account.equity)
@@ -105,7 +191,6 @@ def tick(
         return
 
     # 5. Diff signals vs current positions, submit orders.
-    positions = execution.positions()
     last_prices = {sym: float(df["close"].iloc[-1]) for sym, df in bars.items() if len(df)}
 
     for s in signals:

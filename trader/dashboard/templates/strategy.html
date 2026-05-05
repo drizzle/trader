@@ -14,6 +14,31 @@
   </div>
 {% endif %}
 
+{% if pending_action %}
+  <div class="card" style="border-color: rgba(250,166,26,0.42); background: rgba(250,166,26,0.10);">
+    <h2>Staged Action</h2>
+    <div class="grid grid-3">
+      <div class="stat">
+        <div class="label">Target strategy</div>
+        <div class="value" style="font-size:1.05rem">{{ pending_action.payload.name }}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Status</div>
+        <div class="value" style="font-size:1.05rem">{{ pending_action.status }}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Queued at</div>
+        <div class="value" style="font-size:1.05rem">{{ pending_action.ts_utc }}</div>
+      </div>
+    </div>
+    <div class="muted" style="margin-top: 10px;">
+      The trader will flatten open positions and switch to {{ pending_action.payload.name }} when the market is open.
+      Submitting another strategy deploy cancels this staged action and replaces it.
+      {% if pending_action.error %}<br>Last attempt: {{ pending_action.error }}{% endif %}
+    </div>
+  </div>
+{% endif %}
+
 <div class="card">
   <h2>System Health</h2>
   <div class="status-row">

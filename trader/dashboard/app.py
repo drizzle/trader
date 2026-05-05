@@ -142,6 +142,30 @@ def _read_equity_curve(db_path: Path) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def _position_rows_from_snapshot(rows: list[dict]) -> list[dict]:
+    positions = []
+    for p in rows:
+        qty = float(p.get("qty") or 0.0)
+        avg_entry = float(p.get("avg_entry_price") or 0.0)
+        market_value = float(p.get("market_value") or 0.0)
+        current_price = (market_value / qty) if qty else 0.0
+        cost_basis = avg_entry * qty
+        unrealized_total = market_value - cost_basis
+        unrealized_pct = (
+            ((current_price - avg_entry) / avg_entry * 100) if avg_entry else 0.0
+        )
+        positions.append({
+            "symbol": p.get("symbol"),
+            "qty": qty,
+            "avg_entry_price": avg_entry,
+            "current_price": current_price,
+            "market_value": market_value,
+            "unrealized_pl": unrealized_total,
+            "unrealized_pl_pct": unrealized_pct,
+        })
+    return positions
+
+
 def _read_allocation_signals(db_path: Path, limit: int = 5000) -> list[dict]:
     if not db_path.exists():
         return []
@@ -748,10 +772,12 @@ def create_app(cfg: Config) -> FastAPI:
     def strategy_view(request: Request, msg: str = "", err: str = ""):
         view_started = time.perf_counter()
         signals = _read_signals(cfg.db_path, limit=20)
+        storage = Storage(cfg.db_path)
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
         latest_signal = _read_latest_row(cfg.db_path, "signals")
         latest_order = _read_latest_row(cfg.db_path, "orders")
         latest_equity = _read_latest_row(cfg.db_path, "equity_snapshots")
+        pending_action = storage.latest_pending_action("strategy_switch")
         latest_signal_age, latest_signal_age_seconds = _age_label(
             latest_signal.get("ts_utc") if latest_signal else None
         )
@@ -792,6 +818,9 @@ def create_app(cfg: Config) -> FastAPI:
         flags = []
         if kill_engaged:
             flags.append("Kill switch is engaged")
+        if pending_action:
+            target = pending_action.get("payload", {}).get("name", "strategy")
+            flags.append(f"Strategy switch staged: {target}")
         if api_status == "bad":
             flags.append("Alpaca API unavailable")
         if stale_signal:
@@ -816,6 +845,7 @@ def create_app(cfg: Config) -> FastAPI:
             "latest_signal": latest_signal,
             "latest_order": latest_order,
             "latest_equity": latest_equity,
+            "pending_action": pending_action,
             "health": {
                 "overall_status": overall_status,
                 "flags": flags,
@@ -911,7 +941,7 @@ def create_app(cfg: Config) -> FastAPI:
             "--name", name, "--restart",
         ]
         if flatten:
-            cmd.append("--flatten")
+            cmd.extend(["--flatten", "--stage-if-closed"])
         child_env = os.environ.copy()
         if flatten:
             child_env["TRADER_LOAD_DOTENV"] = "true"
@@ -925,6 +955,13 @@ def create_app(cfg: Config) -> FastAPI:
         except subprocess.TimeoutExpired:
             return RedirectResponse(
                 url="/strategy?err=Deploy+timed+out+after+120s+-+check+journalctl",
+                status_code=303,
+            )
+
+        if proc.returncode == 5:
+            from urllib.parse import quote
+            return RedirectResponse(
+                url=f"/strategy?msg={quote(f'Staged {name}. Market is closed, so the trader will flatten and switch at market open. Kill switch remains engaged.')}",
                 status_code=303,
             )
 
@@ -963,6 +1000,18 @@ def create_app(cfg: Config) -> FastAPI:
         chart_orders = _read_orders(cfg.db_path, limit=500)
         equity_curve = _read_equity_curve(cfg.db_path)
         allocation_signals = _read_allocation_signals(cfg.db_path)
+        storage = Storage(cfg.db_path)
+        latest_position_ts, snapshot_positions = storage.latest_position_snapshot()
+        positions = _position_rows_from_snapshot(snapshot_positions)
+        latest_equity = _read_latest_row(cfg.db_path, "equity_snapshots")
+        if latest_equity:
+            account_data = {
+                "cash": float(latest_equity.get("cash") or 0.0),
+                "equity": float(latest_equity.get("equity") or 0.0),
+                "buying_power": float(latest_equity.get("buying_power") or 0.0),
+            }
+        else:
+            account_data = {"error": "No account snapshots yet"}
 
         ec = _execution()
         if ec is not None:
@@ -995,10 +1044,7 @@ def create_app(cfg: Config) -> FastAPI:
                 account_data = {"cash": account.cash, "equity": account.equity,
                                 "buying_power": account.buying_power}
             except Exception as e:
-                positions, account_data = [], {"error": str(e)}
-        else:
-            msg = "Broker reads disabled for dashboard" if not broker_reads_enabled else "Alpaca client unavailable"
-            positions, account_data = [], {"error": msg}
+                account_data = {"error": str(e)}
 
         # Compute simple P&L since first equity snapshot.
         pnl = None
@@ -1071,6 +1117,7 @@ def create_app(cfg: Config) -> FastAPI:
             "mode": "LIVE" if cfg.alpaca.live else "PAPER",
             "page_generated_at": _to_pacific(datetime.now(timezone.utc)),
             "latest_equity_ts": latest_equity_ts,
+            "latest_position_ts": latest_position_ts,
             "tick_interval_minutes": cfg.schedule.interval_minutes,
         }))
 
@@ -1080,10 +1127,37 @@ def create_app(cfg: Config) -> FastAPI:
         kill_engaged = kill_path.exists()
         kill_reason = kill_path.read_text().strip() if kill_engaged else ""
 
-        # Pull current account + positions to compare against caps.
+        # Read account + positions from trader-written snapshots. This keeps
+        # broker credentials out of the dashboard process.
         ec = _execution()
-        account_data = {}
-        positions = []
+        storage = Storage(cfg.db_path)
+        latest_position_ts, snapshot_positions = storage.latest_position_snapshot()
+        latest_equity = _read_latest_row(cfg.db_path, "equity_snapshots")
+        account_data = (
+            {
+                "cash": float(latest_equity.get("cash") or 0.0),
+                "equity": float(latest_equity.get("equity") or 0.0),
+                "buying_power": float(latest_equity.get("buying_power") or 0.0),
+            }
+            if latest_equity else {"error": "No account snapshots yet"}
+        )
+        acct_equity = account_data.get("equity", 0.0) if "error" not in account_data else 0.0
+        positions = [
+            {
+                "symbol": p["symbol"],
+                "qty": float(p.get("qty") or 0.0),
+                "market_value": float(p.get("market_value") or 0.0),
+                "pct_of_equity": (
+                    float(p.get("market_value") or 0.0) / acct_equity * 100
+                    if acct_equity else 0.0
+                ),
+                "pct_of_cap": (
+                    float(p.get("market_value") or 0.0) / acct_equity / cfg.risk.max_position_pct * 100
+                    if acct_equity and cfg.risk.max_position_pct else 0.0
+                ),
+            }
+            for p in snapshot_positions
+        ]
         sod_equity = None
         daily_loss_pct = None
 
@@ -1113,12 +1187,12 @@ def create_app(cfg: Config) -> FastAPI:
             except Exception as e:
                 account_data = {"error": str(e)}
         else:
-            account_data = {
-                "error": (
-                    "Broker reads disabled for dashboard"
-                    if not broker_reads_enabled else "Alpaca client unavailable"
-                )
-            }
+            today = datetime.now(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            sod_equity = storage.equity_at_or_before(today.isoformat(timespec="seconds"))
+            if sod_equity and "error" not in account_data:
+                daily_loss_pct = (sod_equity - account_data["equity"]) / sod_equity * 100
 
         return templates.TemplateResponse(request, "risk.html", _with_csrf(request, {
             "active_tab": "risk",
@@ -1128,6 +1202,7 @@ def create_app(cfg: Config) -> FastAPI:
             "kill_path": str(kill_path),
             "account": account_data,
             "positions": positions,
+            "latest_position_ts": latest_position_ts,
             "sod_equity": sod_equity,
             "daily_loss_pct": daily_loss_pct,
             "read_only": read_only,

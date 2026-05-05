@@ -142,7 +142,7 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
 
     Exit codes (the dashboard parses these to surface failure cause):
       0 ok / 1 bad args / 2 flatten failed / 3 config write failed
-      4 systemctl restart failed
+      4 systemctl restart failed / 5 staged for market open
     """
     from .config import load_config
     from .strategy import STRATEGIES
@@ -172,9 +172,25 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
         try:
             from .execution import ExecutionClient
             from .storage import Storage
-            ec = ExecutionClient(cfg.alpaca, Storage(cfg.db_path))
+            storage = Storage(cfg.db_path)
+            ec = ExecutionClient(cfg.alpaca, storage)
             positions_before = list(ec.positions().keys())
             if positions_before:
+                if args.stage_if_closed and not ec.is_market_open():
+                    action_id = storage.stage_strategy_switch(
+                        name,
+                        flatten=True,
+                        restart=args.restart,
+                        reason=(
+                            "Flatten was requested while the market was closed; "
+                            "the trader will retry at market open."
+                        ),
+                    )
+                    logger.info(
+                        f"[2/4] Market is closed; staged strategy switch "
+                        f"action_id={action_id} target={name}"
+                    )
+                    return 5
                 logger.info(f"[2/4] Flattening positions: {positions_before}")
                 ec.close_all_positions()
                 remaining = positions_before
@@ -290,6 +306,14 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
         f"Strategy switched to {name}. Kill switch is engaged — "
         f"release it on /risk when ready to start trading."
     )
+    try:
+        from .storage import Storage
+        storage = Storage(cfg.db_path)
+        pending = storage.latest_pending_action("strategy_switch")
+        if pending:
+            storage.mark_pending_action(pending["id"], "completed")
+    except Exception:
+        pass
     return 0
 
 
@@ -395,6 +419,8 @@ def main(argv: list[str] | None = None) -> int:
                           help="Close all open positions before restart.")
     p_switch.add_argument("--restart", action="store_true",
                           help="Run sudo systemctl restart trader after writing config.")
+    p_switch.add_argument("--stage-if-closed", action="store_true",
+                          help="Stage the switch for market open if flatten is needed while the market is closed.")
     p_switch.set_defaults(func=_cmd_switch_strategy)
 
     p_ks = sub.add_parser(

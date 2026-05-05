@@ -46,7 +46,8 @@
   <ol style="color: var(--fg-1); line-height: 1.8; padding-left: 20px; margin: 0;">
     <li>Engage the kill switch (so the running trader stops placing orders).</li>
     <li>If <em>Flatten</em> is checked, run the deploy child with trader credentials and close all open positions via Alpaca.</li>
-    <li>Rewrite <code>config.yaml</code> atomically with the new strategy + universe.</li>
+    <li>If the market is closed and positions cannot be flattened, stage the switch for market open.</li>
+    <li>When flatten succeeds, rewrite <code>config.yaml</code> with the new strategy + universe.</li>
     <li>Run <code>sudo systemctl restart trader</code> to load the new config.</li>
     <li>Kill switch stays engaged — release it on <a href="/risk" style="color: var(--accent)">Risk</a> when ready.</li>
   </ol>
@@ -66,7 +67,7 @@
       <div>
         <div style="font-weight: 600; color: var(--fg-0);">Flatten existing positions before restart</div>
         <div style="color: var(--fg-2); font-size: 12px; margin-top: 4px;">
-          Closes all open positions via Alpaca before the new strategy boots.
+          Closes all open positions via Alpaca before the new strategy boots. If the market is closed, the action is staged and shown on the Strategy tab.
           The dashboard process still does not keep Alpaca keys loaded; the short-lived deploy child reads trader credentials only for this action.
         </div>
       </div>
