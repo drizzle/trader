@@ -412,13 +412,14 @@ def _write_config_yaml(raw: dict, reason: str) -> None:
 
 
 def _restart_trader_service() -> tuple[bool, str]:
+    systemctl = os.environ.get("SYSTEMCTL_BIN", "/bin/systemctl")
     try:
         subprocess.run(
-            ["sudo", "-n", "systemctl", "restart", "trader"],
+            ["sudo", "-n", systemctl, "restart", "trader"],
             check=True, capture_output=True, text=True, timeout=30,
         )
         check = subprocess.run(
-            ["sudo", "-n", "systemctl", "is-active", "trader"],
+            ["sudo", "-n", systemctl, "is-active", "trader"],
             capture_output=True, text=True, timeout=10,
         )
     except subprocess.CalledProcessError as e:
@@ -432,6 +433,19 @@ def _restart_trader_service() -> tuple[bool, str]:
         detail = (check.stderr or "").strip()
         return False, f"trader service is {state}; {detail}".strip()
     return True, "trader restarted"
+
+
+def _apply_risk_update(raw: dict, risk_values: dict, kill_switch_path: str) -> dict:
+    updated = dict(raw)
+    risk = dict(updated.get("risk") or {})
+    risk.update({
+        "max_position_pct": risk_values["max_position_pct"],
+        "daily_loss_limit_pct": risk_values["daily_loss_limit_pct"],
+        "min_cash_buffer_pct": risk_values["min_cash_buffer_pct"],
+        "kill_switch_path": kill_switch_path,
+    })
+    updated["risk"] = risk
+    return updated
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -1019,15 +1033,11 @@ def create_app(cfg: Config) -> FastAPI:
             if max_position_pct + min_cash_buffer_pct > 1.0:
                 raise ValueError("Max position plus min cash buffer cannot exceed 100%")
 
-            raw = _load_config_yaml()
-            risk = dict(raw.get("risk") or {})
-            risk.update({
+            raw = _apply_risk_update(_load_config_yaml(), {
                 "max_position_pct": max_position_pct,
                 "daily_loss_limit_pct": daily_loss_limit_pct,
                 "min_cash_buffer_pct": min_cash_buffer_pct,
-                "kill_switch_path": cfg.risk.kill_switch_path,
-            })
-            raw["risk"] = risk
+            }, cfg.risk.kill_switch_path)
             _write_config_yaml(raw, "risk update")
         except Exception as e:
             from urllib.parse import quote

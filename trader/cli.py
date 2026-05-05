@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import inspect
+import os
 import subprocess
 import sys
 import time
@@ -32,6 +33,13 @@ def _strategy_config_path(config_path: str, strategy: str | None) -> str:
     if candidate.exists():
         return str(candidate)
     return config_path
+
+
+def _apply_strategy_update(raw: dict, name: str, params: dict, universe: list[str]) -> dict:
+    updated = dict(raw)
+    updated["strategy"] = {"name": name, "params": params}
+    updated["universe"] = universe
+    return updated
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -204,8 +212,7 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
         logger.error(f"[3/4] Could not read existing config: {e}")
         return 3
 
-    raw["strategy"] = {"name": name, "params": default_params}
-    raw["universe"] = new_universe
+    raw = _apply_strategy_update(raw, name, default_params, new_universe)
 
     header = (
         "# Strategy + runtime config. Secrets live in .env, NOT here.\n"
@@ -234,14 +241,15 @@ def _cmd_switch_strategy(args: argparse.Namespace) -> int:
 
     # ---- 4. Restart trader service -----------------------------------------
     if args.restart:
+        systemctl = os.environ.get("SYSTEMCTL_BIN", "/bin/systemctl")
         try:
             r = subprocess.run(
-                ["sudo", "-n", "systemctl", "restart", "trader"],
+                ["sudo", "-n", systemctl, "restart", "trader"],
                 check=True, capture_output=True, text=True, timeout=30,
             )
             time.sleep(2)
             check = subprocess.run(
-                ["sudo", "-n", "systemctl", "is-active", "trader"],
+                ["sudo", "-n", systemctl, "is-active", "trader"],
                 capture_output=True, text=True, timeout=10,
             )
             state = check.stdout.strip() or "unknown"
