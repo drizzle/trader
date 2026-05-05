@@ -1,0 +1,10 @@
+[Unit]
+Description=Run trader manager monthly (%i)
+
+[Timer]
+OnCalendar=*-*-01 07:00:00
+Persistent=true
+Unit=trader-manager-monthly@%i.service
+
+[Install]
+WantedBy=timers.target

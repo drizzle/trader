@@ -77,6 +77,15 @@ from ..advisors import (
 from ..advisors.cache import RecommendationCache
 from ..advisors.context import build_context
 from ..config import Config, load_config, validate_account_strategy
+from ..composer_research import (
+    generate_manager_report,
+    latest_manager_report,
+    list_composer_strategies,
+    load_composer_scan,
+    save_composer_import,
+    save_composer_scan,
+    scan_imported_strategies,
+)
 from ..data import DataClient
 from ..execution import ExecutionClient
 from ..market_summary import (
@@ -84,7 +93,7 @@ from ..market_summary import (
     run_summary,
 )
 from ..storage import Storage
-from ..strategy import STRATEGIES
+from ..strategy import STRATEGIES, reload_json_strategies
 
 def _safe_b64_decode(b64_str: str) -> bytes | None:
     """Decode base64, auto-padding to a multiple of 4. Returns None on failure.
@@ -1541,6 +1550,86 @@ def create_app(cfg: Config) -> FastAPI:
     @app.get("/healthz")
     def healthz():
         return {"ok": True}
+
+    @app.get("/composer", response_class=HTMLResponse)
+    def composer_view(request: Request, msg: str = "", err: str = ""):
+        reload_json_strategies()
+        kill_engaged = Path(cfg.risk.kill_switch_path).exists()
+        return templates.TemplateResponse(request, "composer.html", _with_csrf(request, {
+            "active_tab": "composer",
+            "cfg": cfg,
+            "kill_engaged": kill_engaged,
+            "mode": "LIVE" if cfg.alpaca.live else "PAPER",
+            "flash_msg": msg,
+            "flash_err": err,
+            "broker_reads_enabled": broker_reads_enabled,
+            "imports": list_composer_strategies(),
+            "scan": load_composer_scan(cfg),
+            "manager_report": latest_manager_report(cfg),
+            "read_only": read_only,
+        }))
+
+    @app.post("/composer/import")
+    async def composer_import_submit(request: Request):
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+        name = (form.get("name", [""])[0] or "").strip()
+        json_text = form.get("json_text", [""])[0] or ""
+        try:
+            path = save_composer_import(cfg, json_text, name)
+        except Exception as e:
+            from urllib.parse import quote
+            return RedirectResponse(url=f"/composer?err={quote(str(e))}", status_code=303)
+        from urllib.parse import quote
+        return RedirectResponse(
+            url=f"/composer?msg={quote(f'Imported {path.name}; it is now available on the Strategy tab.')}",
+            status_code=303,
+        )
+
+    @app.post("/composer/scan")
+    async def composer_scan_submit(request: Request):
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
+        if not broker_reads_enabled:
+            return RedirectResponse(
+                url="/composer?err=Broker+data+reads+are+disabled+for+dashboard+scan",
+                status_code=303,
+            )
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+        try:
+            years = int((form.get("years", ["3"])[0] or "3").strip())
+            if years not in {1, 3, 5}:
+                raise ValueError("Lookback must be 1, 3, or 5 years")
+            scan = scan_imported_strategies(cfg, years=years)
+            save_composer_scan(cfg, scan)
+        except Exception as e:
+            from urllib.parse import quote
+            return RedirectResponse(url=f"/composer?err={quote(str(e))}", status_code=303)
+        return RedirectResponse(url="/composer?msg=Composer+scan+refreshed", status_code=303)
+
+    @app.post("/composer/manager")
+    async def composer_manager_submit(request: Request):
+        if read_only:
+            return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
+        body = (await request.body()).decode()
+        form = parse_qs(body)
+        cadence = (form.get("cadence", ["daily"])[0] or "daily").strip()
+        if cadence not in {"daily", "weekly", "monthly"}:
+            return RedirectResponse(url="/composer?err=Invalid+cadence", status_code=303)
+        try:
+            if form.get("refresh_composer", [""])[0] == "on":
+                if not broker_reads_enabled:
+                    raise RuntimeError("Broker data reads are disabled for dashboard Composer refresh")
+                scan = scan_imported_strategies(cfg, years=3)
+                save_composer_scan(cfg, scan)
+            generate_manager_report(cfg, cadence=cadence)
+        except Exception as e:
+            from urllib.parse import quote
+            return RedirectResponse(url=f"/composer?err={quote(str(e))}", status_code=303)
+        return RedirectResponse(url="/composer?msg=Trader+manager+report+generated", status_code=303)
 
     @app.get("/advisors", response_class=HTMLResponse)
     def advisors_view(request: Request, msg: str = "", err: str = ""):

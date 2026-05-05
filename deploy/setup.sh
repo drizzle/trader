@@ -61,6 +61,8 @@ echo "==> Installing systemd units"
 install -m 644 "${INSTALL_DIR}/deploy/trader.service"           /etc/systemd/system/trader.service
 install -m 644 "${INSTALL_DIR}/deploy/trader@.service"          /etc/systemd/system/trader@.service
 install -m 644 "${INSTALL_DIR}/deploy/trader-dashboard.service" /etc/systemd/system/trader-dashboard.service
+install -m 644 "${INSTALL_DIR}"/deploy/trader-manager-*.service /etc/systemd/system/
+install -m 644 "${INSTALL_DIR}"/deploy/trader-manager-*.timer   /etc/systemd/system/
 systemctl daemon-reload
 
 echo ""
@@ -83,6 +85,10 @@ echo "       # optional:"
 echo "       sudo systemctl enable --now trader@live_account"
 echo "       sudo systemctl enable --now trader@Roth_IRA"
 echo "       sudo systemctl enable --now trader-dashboard"
+echo "       # optional manager reports:"
+echo "       sudo systemctl enable --now trader-manager-daily@paper_account.timer"
+echo "       sudo systemctl enable --now trader-manager-weekly@paper_account.timer"
+echo "       sudo systemctl enable --now trader-manager-monthly@paper_account.timer"
 echo ""
 echo "  3. Watch logs:"
 echo "       sudo journalctl -u trader -f"

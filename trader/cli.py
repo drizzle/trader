@@ -377,6 +377,22 @@ def _cmd_kill_switch(args: argparse.Namespace) -> int:
     return 1
 
 
+def _cmd_trader_manager(args: argparse.Namespace) -> int:
+    from .composer_research import generate_manager_report, save_composer_scan, scan_imported_strategies
+    from .config import load_config
+
+    cfg = load_config(args.config, account_id=args.account, validate_strategy=False)
+    logger.remove()
+    logger.add(sys.stderr, level=cfg.log_level)
+    if args.refresh_composer:
+        scan = scan_imported_strategies(cfg, years=args.years, limit=args.limit)
+        path = save_composer_scan(cfg, scan)
+        logger.info(f"Composer scan written: {path}")
+    report = generate_manager_report(cfg, cadence=args.cadence)
+    print(report["synthesis"])
+    return 0
+
+
 def _cmd_dashboard(args: argparse.Namespace) -> int:
     import uvicorn
     from .dashboard.app import create_app
@@ -462,6 +478,20 @@ def main(argv: list[str] | None = None) -> int:
     p_ks.add_argument("--reason", default=None,
                       help="Free-text reason recorded in the flag file (engage only).")
     p_ks.set_defaults(func=_cmd_kill_switch)
+
+    p_mgr = sub.add_parser(
+        "trader-manager",
+        help="Generate LLM-backed daily/weekly/monthly trader manager report.",
+    )
+    p_mgr.add_argument("--config", default="config.yaml")
+    p_mgr.add_argument("--account", default=None,
+                       help="Configured account id, e.g. Roth_IRA, live_account, paper_account.")
+    p_mgr.add_argument("--cadence", choices=["daily", "weekly", "monthly"], default="daily")
+    p_mgr.add_argument("--refresh-composer", action="store_true",
+                       help="Run a fresh imported Composer strategy scan before reporting.")
+    p_mgr.add_argument("--years", type=int, default=3)
+    p_mgr.add_argument("--limit", type=int, default=12)
+    p_mgr.set_defaults(func=_cmd_trader_manager)
 
     p_dash = sub.add_parser("dashboard", help="Start the FastAPI dashboard.")
     p_dash.add_argument("--config", default="config.yaml")

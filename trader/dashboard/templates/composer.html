@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Composer{% endblock %}
+{% block heading %}Composer{% endblock %}
+{% block content %}
+
+{% if flash_msg %}
+  <div class="card" style="border-color: var(--accent-line); background: var(--accent-soft);">
+    <strong style="color: var(--accent);">✓</strong> {{ flash_msg }}
+  </div>
+{% endif %}
+{% if flash_err %}
+  <div class="card" style="border-color: rgba(255,77,109,0.32); background: var(--neg-soft);">
+    <strong style="color: var(--neg);">⚠</strong> {{ flash_err }}
+  </div>
+{% endif %}
+
+<div class="card">
+  <h2>Research Stance</h2>
+  <p class="muted" style="margin:0; line-height:1.6">
+    Composer is useful for finding strategy shapes, but high annualized return alone is usually a warning label.
+    This tab ranks imported symphonies with local backtests and forces return, Sharpe, drawdown, trade count, liquidity proxies,
+    and macro synthesis to sit in the same view before anything becomes deployable.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Import Composer JSON</h2>
+  <form method="post" action="/composer/import">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="grid grid-3">
+      <label class="bt-field">
+        <span>Name</span>
+        <input type="text" name="name" placeholder="e.g. uranium_momentum">
+      </label>
+    </div>
+    <textarea name="json_text" required placeholder="Paste Composer symphony JSON here"></textarea>
+    <div style="margin-top:12px">
+      <button type="submit">Import strategy</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Imported Strategy Scan</h2>
+  <form method="post" action="/composer/scan" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap; margin-bottom:12px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="bt-field" style="min-width:160px">
+      <span>Lookback</span>
+      <select name="years">
+        <option value="1">1 year</option>
+        <option value="3" selected>3 years</option>
+        <option value="5">5 years</option>
+      </select>
+    </label>
+    <button type="submit" {% if not broker_reads_enabled %}disabled{% endif %}>Refresh scan</button>
+    {% if not broker_reads_enabled %}
+      <span class="muted">Broker/data reads are disabled for dashboard refresh. Use CLI trader-manager with .env credentials.</span>
+    {% endif %}
+  </form>
+
+  {% if scan and scan.rows %}
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Strategy</th><th>Score</th><th>Ann. Return</th><th>Sharpe</th>
+            <th>Max DD</th><th>Trades</th><th>Assets</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in scan.rows %}
+            <tr>
+              <td><strong>{{ row.name }}</strong></td>
+              <td>{{ "%.2f"|format(row.score) }}</td>
+              <td>{{ "%.2f%%"|format(row.metrics.cagr_pct) }}</td>
+              <td>{{ "%.2f"|format(row.metrics.sharpe) }}</td>
+              <td class="neg">{{ "%.2f%%"|format(row.metrics.max_drawdown_pct) }}</td>
+              <td>{{ row.metrics.n_trades }}</td>
+              <td>{{ row.asset_count }} · {{ row.assets_preview|join(", ") }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">No scan yet. Import a Composer JSON strategy, then refresh scan.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Available Composer Imports</h2>
+  {% if imports %}
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Name</th><th>Assets</th><th>Source</th><th>Deploy</th></tr></thead>
+        <tbody>
+          {% for item in imports %}
+            <tr>
+              <td><strong>{{ item.name }}</strong></td>
+              <td>{{ item.asset_count }} · {{ item.assets_preview|join(", ") }}</td>
+              <td><code>{{ item.source_path }}</code></td>
+              <td><a class="report" href="/strategy?strategy={{ item.name }}">Open in Strategy tab</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">No imported Composer strategies yet.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Trader Manager</h2>
+  <form method="post" action="/composer/manager" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap; margin-bottom:12px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="bt-field" style="min-width:160px">
+      <span>Cadence</span>
+      <select name="cadence">
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+      </select>
+    </label>
+    <label style="display:flex; gap:8px; align-items:center; color:var(--fg-1)">
+      <input type="checkbox" name="refresh_composer"> refresh Composer scan first
+    </label>
+    <button type="submit">Generate report</button>
+  </form>
+  {% if manager_report %}
+    <p class="muted">Generated {{ manager_report.generated_at }} · {{ manager_report.cadence }}</p>
+    <pre class="logic-block">{{ manager_report.synthesis }}</pre>
+  {% else %}
+    <div class="empty">No trader-manager report yet.</div>
+  {% endif %}
+</div>
+
+<style>
+  textarea {
+    width: 100%;
+    min-height: 220px;
+    margin-top: 12px;
+    background: var(--bg-1);
+    color: var(--fg-0);
+    border: 1px solid var(--border-2);
+    border-radius: var(--r-md);
+    padding: 12px;
+    font: 12px/1.5 var(--font-mono);
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  .bt-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .bt-field > span {
+    color: var(--fg-2); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+  }
+  .bt-field select {
+    background: var(--bg-2); color: var(--fg-0);
+    border: 1px solid var(--border-2); border-radius: var(--r-md);
+    padding: 10px 12px; font-size: 14px; min-height: 44px;
+    font-family: inherit;
+  }
+</style>
+
+{% endblock %}

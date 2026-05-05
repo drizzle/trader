@@ -44,11 +44,34 @@ separate "active strategy" file — `config.yaml` IS that file.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from .base import Strategy
 from .composer_strategy import ComposerStrategy, _strip_rtf
+
+
+def _json_search_dirs() -> list[Path]:
+    dirs = [Path(__file__).parent]
+    env_dir = os.environ.get("COMPOSER_IMPORT_DIR")
+    if env_dir:
+        dirs.append(Path(env_dir))
+    data_root = Path(os.environ.get("DATA_DIR", "./data"))
+    dirs.append(data_root / "composer_imports")
+    if data_root.exists():
+        dirs.extend(sorted(p for p in data_root.glob("*/composer_imports") if p.is_dir()))
+    out = []
+    seen = set()
+    for d in dirs:
+        try:
+            resolved = d.resolve()
+        except Exception:
+            resolved = d
+        if resolved not in seen:
+            seen.add(resolved)
+            out.append(d)
+    return out
 
 
 def _load_json_specs() -> dict[str, dict]:
@@ -59,10 +82,11 @@ def _load_json_specs() -> dict[str, dict]:
     typo'd JSON must NEVER take down the bot or the dashboard at startup.
     """
     specs: dict[str, dict] = {}
-    json_dir = Path(__file__).parent
     seen_paths: set[Path] = set()
-    for pattern in ("*.json", "*.JSON"):
-        for p in sorted(json_dir.glob(pattern)):
+    for json_dir in _json_search_dirs():
+        if not json_dir.exists():
+            continue
+        for p in sorted(list(json_dir.glob("*.json")) + list(json_dir.glob("*.JSON"))):
             if p in seen_paths:
                 continue
             seen_paths.add(p)

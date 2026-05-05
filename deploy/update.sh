@@ -22,6 +22,8 @@ echo "==> Reloading systemd unit files (in case .service files changed)"
 install -m 644 "${INSTALL_DIR}/deploy/trader.service"           /etc/systemd/system/trader.service
 install -m 644 "${INSTALL_DIR}/deploy/trader@.service"          /etc/systemd/system/trader@.service
 install -m 644 "${INSTALL_DIR}/deploy/trader-dashboard.service" /etc/systemd/system/trader-dashboard.service
+install -m 644 "${INSTALL_DIR}"/deploy/trader-manager-*.service /etc/systemd/system/
+install -m 644 "${INSTALL_DIR}"/deploy/trader-manager-*.timer   /etc/systemd/system/
 systemctl daemon-reload
 
 echo "==> Installing sudoers entry (lets dashboard restart trader service)"

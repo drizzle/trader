@@ -1,0 +1,21 @@
+[Unit]
+Description=Trader manager daily report (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trader
+Group=trader
+WorkingDirectory=/opt/trader
+EnvironmentFile=/opt/trader/.env
+ExecStart=/opt/trader/.venv/bin/python -m trader trader-manager --account %i --cadence daily
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/trader/data
+PrivateTmp=true

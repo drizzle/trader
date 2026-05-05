@@ -14,6 +14,7 @@ import pytest
 from trader.config import RiskConfig
 from trader.backtest import run_backtest
 from trader.risk import RiskCheck
+from trader.composer_research import parse_composer_json
 from trader.storage import Storage
 from trader.strategy.base import Signal, Strategy
 from trader.strategy.sma_crossover import SmaCrossoverStrategy
@@ -224,3 +225,9 @@ def test_staging_strategy_switch_replaces_existing_pending_action():
         assert pending["id"] == second
         assert pending["id"] != first
         assert pending["payload"]["name"] == "Golden Tech"
+
+
+def test_parse_composer_json_assigns_name():
+    spec = parse_composer_json('{"step":"root","children":[]}', "test_symphony")
+    assert spec["name"] == "test_symphony"
+    assert spec["step"] == "root"
