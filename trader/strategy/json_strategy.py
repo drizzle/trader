@@ -48,41 +48,71 @@ from pathlib import Path
 from typing import Any
 
 from .base import Strategy
+from .composer_strategy import ComposerStrategy, _strip_rtf
 
 
 def _load_json_specs() -> dict[str, dict]:
-    """Scan trader/strategy/*.json and return name → spec dict.
+    """Scan trader/strategy/*.json (and .JSON) and return name → spec dict.
 
-    Malformed / unreadable files are skipped (we never want a typo'd JSON
-    to crash the whole strategy registry — that would take down the bot
-    AND the dashboard at startup).
+    Auto-strips TextEdit-style RTF wrappers so users don't have to remember
+    to "Save as plain text". Malformed / unreadable files are skipped — a
+    typo'd JSON must NEVER take down the bot or the dashboard at startup.
     """
     specs: dict[str, dict] = {}
     json_dir = Path(__file__).parent
-    for p in sorted(json_dir.glob("*.json")):
-        try:
-            spec = json.loads(p.read_text())
-        except Exception:
-            continue
-        if not isinstance(spec, dict):
-            continue
-        name = spec.get("name") or p.stem
-        spec["_source_path"] = str(p)
-        specs[name] = spec
+    seen_paths: set[Path] = set()
+    for pattern in ("*.json", "*.JSON"):
+        for p in sorted(json_dir.glob(pattern)):
+            if p in seen_paths:
+                continue
+            seen_paths.add(p)
+            try:
+                text = p.read_text()
+                if text.startswith("{\\rtf"):
+                    text = _strip_rtf(text)
+                spec = json.loads(text)
+            except Exception:
+                continue
+            if not isinstance(spec, dict):
+                continue
+            name = spec.get("name") or p.stem
+            spec["_source_path"] = str(p)
+            specs[name] = spec
     return specs
+
+
+def _is_composer_spec(spec: dict) -> bool:
+    """Composer symphonies have nested children with `step` fields.
+
+    The recipe format we also support has a flat `{name, type, params}` shape
+    with no `children` and no `step`. This is enough to disambiguate cleanly.
+    """
+    if not isinstance(spec, dict):
+        return False
+    if spec.get("step") in {"root", "group", "if", "wt-cash-equal", "wt-cash-specified"}:
+        return True
+    children = spec.get("children")
+    if isinstance(children, list):
+        return any(isinstance(c, dict) and "step" in c for c in children)
+    return False
 
 
 def make_json_strategy_class(spec: dict[str, Any], builtins: dict[str, type[Strategy]]):
     """Generate a Strategy subclass for one JSON spec.
 
-    The generated class:
-      - inherits from the underlying class named in spec["type"]
-      - bakes spec["params"] in as defaults; config.yaml params still
-        override per-deploy
-      - overrides .name and (optionally) .is_crypto from the spec
-      - carries inspect-friendly metadata so the dashboard's
-        Strategy Reference tab shows useful info instead of "<lambda>"
+    Two formats are supported:
+
+      1. Composer-symphony JSON  — detected by nested `children`/`step`
+         fields. Wrapped as a ComposerStrategy.
+      2. Recipe JSON             — `{name, type, params, is_crypto}` form.
+         Wraps an existing built-in strategy class with custom defaults.
+
+    The generated class carries inspect-friendly metadata so the dashboard's
+    Strategy Reference tab shows useful info instead of "<lambda>".
     """
+    if _is_composer_spec(spec):
+        return _make_composer_class(spec)
+
     underlying_name = spec.get("type")
     if not underlying_name:
         raise ValueError(
@@ -130,3 +160,61 @@ def make_json_strategy_class(spec: dict[str, Any], builtins: dict[str, type[Stra
     _JsonStrategy._json_spec = spec  # type: ignore[attr-defined]
     _JsonStrategy._json_params = json_params  # type: ignore[attr-defined]
     return _JsonStrategy
+
+
+def _make_composer_class(spec: dict):
+    """Wrap a Composer symphony spec as a ComposerStrategy subclass.
+
+    Adds a kwarg-tolerant __init__ so the registry can call it with the
+    same `(**params)` shape it uses for all other strategies. config.yaml's
+    `strategy.params.target_allocation` (if any) is honored; everything
+    else is ignored.
+    """
+    name = spec.get("name") or "composer_unnamed"
+    source_path = spec.get("_source_path", "(inline)")
+    asset_count = sum(
+        1 for n in _walk_nodes(spec) if isinstance(n, dict) and n.get("step") == "asset"
+    )
+    universe_preview = []
+    for n in _walk_nodes(spec):
+        if isinstance(n, dict) and n.get("step") == "asset":
+            t = n.get("ticker", "")
+            if t and t not in universe_preview:
+                universe_preview.append(t)
+                if len(universe_preview) >= 8:
+                    break
+
+    class _ComposerWrapped(ComposerStrategy):
+        pass
+
+    def _init(self, target_allocation: float = 0.95, **ignored):
+        ComposerStrategy.__init__(
+            self, spec=spec, name=name, target_allocation=target_allocation
+        )
+
+    _ComposerWrapped.__init__ = _init
+    _ComposerWrapped.__name__ = f"ComposerStrategy_{name}"
+    _ComposerWrapped.__qualname__ = _ComposerWrapped.__name__
+    _ComposerWrapped.name = name
+    _ComposerWrapped.is_crypto = False
+    _ComposerWrapped.__doc__ = (
+        f"Composer-symphony strategy '{name}'.\n\n"
+        f"Source: {source_path}\n"
+        f"Total asset leaves: {asset_count}\n"
+        f"First tickers: {', '.join(universe_preview)}"
+        f"{'…' if asset_count > len(universe_preview) else ''}\n\n"
+        + (ComposerStrategy.__doc__ or "")
+    )
+    _ComposerWrapped._json_spec = spec  # type: ignore[attr-defined]
+    return _ComposerWrapped
+
+
+def _walk_nodes(node):
+    """Generator: yield every dict node in the tree (including the root)."""
+    if isinstance(node, dict):
+        yield node
+        for child in node.get("children") or []:
+            yield from _walk_nodes(child)
+    elif isinstance(node, list):
+        for child in node:
+            yield from _walk_nodes(child)

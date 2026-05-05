@@ -618,6 +618,9 @@
     smoothPath(ctx, pts);
     ctx.stroke();
 
+    // X-axis time labels.
+    drawTimeAxis(ctx, colors, pad.l, W - pad.r, H - pad.b, p.minT, p.maxT, p.spanT);
+
     // Hover crosshair + dot + tooltip.
     if (hover && hover.idx != null) {
       var hp = pts[hover.idx];
@@ -718,22 +721,12 @@
       ctx.fillRect(bx, bottom - cashH - assetH, barW, assetH);
     }
 
-    // Trade markers — small circles at the top of the chart, at the time of
-    // each fill. Buys = green, sells = red. Reflects every flatten/buy/sell
-    // since each fill changes the cash/asset split on the next snapshot.
-    var visibleOrders = ORDERS.filter(function (o) { return o.t >= minT && o.t <= maxT; });
-    visibleOrders.forEach(function (o) {
-      var ratio = (o.t - minT) / spanT;
-      var ox = pad.l + ratio * w;
-      var buy = o.side === 'buy';
-      ctx.fillStyle = buy ? colors.up : colors.down;
-      ctx.strokeStyle = colors.bg;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(ox, top + 6, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    });
+    // (Removed trade-marker dots — the bar split itself reflects every
+    // buy/sell/flatten on the next snapshot; per-trade dots cluttered the
+    // top of the chart and were redundant with the height changes.)
+
+    // X-axis time labels (4 evenly-spaced ticks).
+    drawTimeAxis(ctx, colors, pad.l, AW - pad.r, bottom, minT, maxT, spanT);
 
     var last = rows[rows.length - 1];
     allocationSub.textContent =
@@ -768,6 +761,40 @@
     } else {
       allocTooltip.hidden = true;
     }
+  }
+
+  // Render 4 evenly-spaced time labels along the bottom of a chart. Format
+  // adapts to the visible span — intraday shows H:MM, multi-day shows
+  // "May 3", year+ shows "May '26". Forced to Pacific Time for consistency
+  // with the rest of the dashboard.
+  function drawTimeAxis(ctx, colors, x0, x1, baseY, minT, maxT, spanT) {
+    if (!isFinite(spanT) || spanT <= 0) return;
+    var DAY = 86400000;
+    var fmtOpts;
+    if (spanT <= 2 * DAY) {
+      fmtOpts = { timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false };
+    } else if (spanT <= 365 * DAY) {
+      fmtOpts = { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' };
+    } else {
+      fmtOpts = { timeZone: 'America/Los_Angeles', month: 'short', year: '2-digit' };
+    }
+    var n = 4;
+    ctx.save();
+    ctx.fillStyle = colors.muted;
+    ctx.font = '10px ui-monospace, "SF Mono", Menlo, monospace';
+    ctx.textBaseline = 'top';
+    for (var i = 0; i < n; i++) {
+      var t = minT + (spanT * i) / (n - 1);
+      var x = x0 + ((x1 - x0) * i) / (n - 1);
+      var label = new Date(t).toLocaleString('en-US', fmtOpts);
+      // Anchor the first label left, last right, middle ones centered, so
+      // the text never clips against the chart edges.
+      if (i === 0) ctx.textAlign = 'left';
+      else if (i === n - 1) ctx.textAlign = 'right';
+      else ctx.textAlign = 'center';
+      ctx.fillText(label, x, baseY + 4);
+    }
+    ctx.restore();
   }
 
   function clamp(n, lo, hi) { return n < lo ? lo : (n > hi ? hi : n); }

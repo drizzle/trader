@@ -810,12 +810,32 @@ def create_app(cfg: Config) -> FastAPI:
                 "last_ts": equity_curve[-1]["ts_utc"],
             }
 
-        if len(cfg.universe) == 1:
-            allocation_asset_label = cfg.universe[0]
-        elif len(positions) == 1:
-            allocation_asset_label = positions[0]["symbol"]
+        # Allocation label priority — derived from what we *actually traded*,
+        # not what the strategy config says today. Order:
+        #   1. Currently held positions (most accurate "what's in the holding band")
+        #   2. Most recent FILLED order (covers cases where positions just closed)
+        #   3. cfg.universe (last-resort fallback)
+        # Without this, switching strategy from BTC to SPY would relabel the
+        # historical bars as "SPY" even though those bars represent BTC value.
+        non_zero_positions = [p for p in positions if p.get("qty", 0)]
+        recent_fill_symbol = None
+        for o in orders:
+            if o.get("status") == "filled" and o.get("symbol"):
+                recent_fill_symbol = o["symbol"]
+                break
+
+        if len(non_zero_positions) == 1:
+            allocation_asset_label = non_zero_positions[0]["symbol"]
+        elif len(non_zero_positions) > 1:
+            allocation_asset_label = " + ".join(p["symbol"] for p in non_zero_positions[:3])
+            if len(non_zero_positions) > 3:
+                allocation_asset_label += f" +{len(non_zero_positions) - 3}"
+        elif recent_fill_symbol:
+            allocation_asset_label = recent_fill_symbol
+        elif cfg.universe:
+            allocation_asset_label = cfg.universe[0] if len(cfg.universe) == 1 else "Holdings"
         else:
-            allocation_asset_label = "Positions"
+            allocation_asset_label = "Holdings"
 
         # Latest equity-snapshot timestamp + page render time, so the user
         # can see how stale the data is and roughly when the next tick lands.
