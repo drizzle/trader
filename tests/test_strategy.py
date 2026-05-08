@@ -16,7 +16,7 @@ from alpaca.trading.enums import OrderSide
 
 from trader.config import RiskConfig
 from trader.backtest import run_backtest
-from trader.main import _enforce_cash_buffer, _scale_signals_for_cash_buffer
+from trader.main import _enforce_cash_buffer, _scale_signals_for_risk_limits
 from trader.risk import RiskCheck
 from trader.composer_research import parse_composer_json
 from trader.storage import Storage
@@ -265,21 +265,21 @@ def test_cash_buffer_submits_once_without_pending_orders():
         ]
 
 
-def test_live_signals_scale_to_cash_buffer_instead_of_skipping_orders():
-    cfg = SimpleNamespace(risk=RiskConfig(min_cash_buffer_pct=0.1))
+def test_live_signals_scale_to_aggregate_exposure_cap_for_multi_leg_strategy():
+    cfg = SimpleNamespace(risk=RiskConfig(max_position_pct=0.8, min_cash_buffer_pct=0.1))
     signals = [
         Signal("AAA", 0.60, "composer:test"),
         Signal("BBB", 0.35, "composer:test"),
         Signal("CCC", 0.00, "flat (composer)"),
     ]
 
-    scaled = _scale_signals_for_cash_buffer(cfg, signals)
+    scaled = _scale_signals_for_risk_limits(cfg, signals)
 
-    assert sum(s.target_pct for s in scaled) == pytest.approx(0.90)
-    assert scaled[0].target_pct == pytest.approx(0.60 * (0.90 / 0.95))
-    assert scaled[1].target_pct == pytest.approx(0.35 * (0.90 / 0.95))
+    assert sum(s.target_pct for s in scaled) == pytest.approx(0.80)
+    assert scaled[0].target_pct == pytest.approx(0.60 * (0.80 / 0.95))
+    assert scaled[1].target_pct == pytest.approx(0.35 * (0.80 / 0.95))
     assert scaled[2].target_pct == 0.0
-    assert "scaled by" in scaled[0].rationale
+    assert "exposure cap" in scaled[0].rationale
 
 
 def test_composer_cash_fallback_allocates_residual_to_sgov():
@@ -315,8 +315,8 @@ def test_risk_position_size_limit():
     with tempfile.TemporaryDirectory() as tmp:
         storage = Storage(Path(tmp) / "test.db")
         risk = RiskCheck(RiskConfig(max_position_pct=0.5), storage)
-        assert risk.check_position_size("SPY", 0.4, 100_000).allow is True
-        assert risk.check_position_size("SPY", 0.6, 100_000).allow is False
+        assert risk.check_position_size("SPY", 0.6, 100_000).allow is True
+        assert risk.check_position_size("SPY", -0.1, 100_000).allow is False
 
 
 def test_risk_cash_buffer():

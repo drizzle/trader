@@ -123,9 +123,11 @@
   {% if read_only %}
     <div class="grid grid-3">
       <div class="stat">
-        <div class="label">Max position</div>
+        <div class="label">Max strategy exposure</div>
         <div class="value">{{ "%.0f%%" | format(cfg.risk.max_position_pct * 100) }}</div>
-        <div style="color:#8b949e; font-size:0.75rem; margin-top:4px">per single symbol</div>
+        <div style="color:#8b949e; font-size:0.75rem; margin-top:4px">
+          total basket cap; strategy weights split this exposure
+        </div>
       </div>
       <div class="stat">
         <div class="label">Daily loss cap</div>
@@ -144,10 +146,10 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="grid grid-3">
         <label class="risk-field">
-          <span>Max position</span>
+          <span>Max strategy exposure</span>
           <input type="number" name="max_position_pct" min="0" max="100" step="0.1"
                  value="{{ '%.1f' | format(cfg.risk.max_position_pct * 100) }}" required>
-          <small>Per single symbol</small>
+          <small>Total strategy basket cap. Multi-leg strategies keep their allocation weights inside this limit.</small>
         </label>
         <label class="risk-field">
           <span>Daily loss cap</span>

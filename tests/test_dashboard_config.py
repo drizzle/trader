@@ -9,6 +9,7 @@ from trader.cli import _apply_strategy_update
 from trader.config import load_config
 from trader.dashboard.app import (
     _apply_risk_update,
+    _public_daily_bars,
     _read_latest_signal,
     _read_signals,
     _restart_trader_service,
@@ -261,3 +262,25 @@ def test_strategy_signal_reads_filter_to_active_strategy(tmp_path) -> None:
     assert [row["strategy"] for row in active] == ["Golden Tech"]
     assert latest is not None
     assert latest["symbol"] == "SPY"
+
+
+def test_public_daily_bars_parses_stooq_csv(monkeypatch) -> None:
+    class Response:
+        text = "Date,Open,High,Low,Close,Volume\n2026-05-01,10,12,9,11,1000\n"
+
+        def raise_for_status(self):
+            return None
+
+    calls = []
+
+    def fake_get(url, params, timeout):
+        calls.append((url, params, timeout))
+        return Response()
+
+    monkeypatch.setattr("trader.dashboard.app.requests.get", fake_get)
+
+    bars = _public_daily_bars(["SPY"])
+
+    assert calls[0][1] == {"s": "spy.us", "i": "d"}
+    assert list(bars["SPY"].columns) == ["open", "high", "low", "close", "volume"]
+    assert float(bars["SPY"]["close"].iloc[-1]) == 11.0

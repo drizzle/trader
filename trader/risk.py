@@ -34,11 +34,10 @@ class RiskCheck:
     def check_position_size(
         self, symbol: str, target_pct: float, current_equity: float
     ) -> RiskDecision:
-        if target_pct < 0 or target_pct > self.config.max_position_pct:
+        if target_pct < 0:
             return RiskDecision(
                 False,
-                f"Target {target_pct:.2%} for {symbol} violates max_position_pct "
-                f"{self.config.max_position_pct:.2%}",
+                f"Target {target_pct:.2%} for {symbol} cannot be negative",
             )
         return RiskDecision(True)
 

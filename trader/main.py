@@ -159,28 +159,31 @@ def _enforce_cash_buffer(
     return False
 
 
-def _scale_signals_for_cash_buffer(cfg: Config, signals: list[Signal]) -> list[Signal]:
-    """Reduce aggregate exposure to fit the configured cash buffer.
+def _scale_signals_for_risk_limits(cfg: Config, signals: list[Signal]) -> list[Signal]:
+    """Reduce aggregate exposure to fit portfolio-level risk limits.
 
-    The backtester already does this, and live trading should behave the same
-    way: a 95% Composer allocation with a 10% cash buffer becomes 90% exposure
-    instead of skipping every buy order.
+    `max_position_pct` is treated as the strategy's total exposure cap. A
+    multi-leg strategy keeps its relative allocations, but the whole basket is
+    scaled down to fit both that cap and the required cash buffer.
     """
     total_target = sum(s.target_pct for s in signals)
-    max_total = max(0.0, 1.0 - cfg.risk.min_cash_buffer_pct)
+    max_total = max(
+        0.0,
+        min(cfg.risk.max_position_pct, 1.0 - cfg.risk.min_cash_buffer_pct),
+    )
     if total_target <= max_total or total_target <= 0:
         return signals
 
     scale = max_total / total_target if max_total > 0 else 0.0
     logger.warning(
-        f"Targeted exposure {total_target:.2%} would breach cash buffer "
-        f"{cfg.risk.min_cash_buffer_pct:.2%}; scaling targets by {scale:.3f}"
+        f"Targeted exposure {total_target:.2%} would breach portfolio exposure cap "
+        f"{max_total:.2%}; scaling targets by {scale:.3f}"
     )
     return [
         Signal(
             s.symbol,
             s.target_pct * scale,
-            f"{s.rationale} | scaled by {scale:.3f} for cash buffer",
+            f"{s.rationale} | scaled by {scale:.3f} for exposure cap",
         )
         if s.target_pct > 0
         else s
@@ -343,7 +346,7 @@ def tick(
         logger.info(f"Signal: {s.symbol} target={s.target_pct:.2%} ({s.rationale})")
 
     # 4. Cash-buffer guard on aggregate exposure.
-    signals = _scale_signals_for_cash_buffer(cfg, signals)
+    signals = _scale_signals_for_risk_limits(cfg, signals)
     total_target = sum(s.target_pct for s in signals)
     cash = risk.check_cash_buffer(total_target)
     if not cash.allow:

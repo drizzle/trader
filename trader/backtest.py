@@ -142,8 +142,8 @@ def run_backtest(
     'open' and 'close' columns and a DatetimeIndex.
 
     If `risk_config` is provided, the backtest enforces:
-      - max_position_pct (caps each per-symbol target)
-      - min_cash_buffer_pct (reduces aggregate target if it would breach)
+      - max_position_pct (caps total strategy exposure)
+      - min_cash_buffer_pct (also reduces aggregate target if it would breach)
     Daily-loss limit + kill-switch are not modeled — they're runtime concerns.
     """
     # Build a unified date index across all symbols (intersection, so every symbol has a price).
@@ -207,26 +207,16 @@ def run_backtest(
 
         # --- Risk-manager pass (matches what live execution enforces) ---
         if risk_config is not None:
-            # Cap per-symbol targets at max_position_pct.
-            capped: list = []
-            for s in signals:
-                if s.target_pct > risk_config.max_position_pct:
-                    capped.append(type(s)(
-                        s.symbol, risk_config.max_position_pct,
-                        f"{s.rationale} | capped to max_position_pct",
-                    ))
-                else:
-                    capped.append(s)
-            signals = capped
-
-            # Cap aggregate exposure to leave the cash buffer.
             total = sum(s.target_pct for s in signals)
-            max_total = 1.0 - risk_config.min_cash_buffer_pct
+            max_total = max(
+                0.0,
+                min(risk_config.max_position_pct, 1.0 - risk_config.min_cash_buffer_pct),
+            )
             if total > max_total and total > 0:
                 scale = max_total / total
                 signals = [
                     type(s)(s.symbol, s.target_pct * scale,
-                            f"{s.rationale} | scaled by {scale:.3f} for cash buffer")
+                            f"{s.rationale} | scaled by {scale:.3f} for exposure cap")
                     for s in signals
                 ]
 

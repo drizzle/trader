@@ -30,6 +30,8 @@ from pathlib import Path
 from urllib.parse import parse_qs
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+import requests
 import yaml
 
 # All storage + order execution happens in UTC. The dashboard *displays* in
@@ -382,6 +384,40 @@ def _advisor_state(cfg: Config) -> dict:
         "matrix_rows": matrix_rows,
         "deepseek_configured": cfg.deepseek.enabled,
     }
+
+
+def _public_daily_bars(symbols: list[str], lookback_days: int = 400) -> dict[str, pd.DataFrame]:
+    """Fetch public daily equity bars without broker/account credentials."""
+    out: dict[str, pd.DataFrame] = {}
+    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=lookback_days + 30)
+    for sym in symbols:
+        if "/" in sym:
+            out[sym] = pd.DataFrame()
+            continue
+        try:
+            resp = requests.get(
+                "https://stooq.com/q/d/l/",
+                params={"s": f"{sym.lower()}.us", "i": "d"},
+                timeout=12,
+            )
+            resp.raise_for_status()
+            text = resp.text.strip()
+            if not text or text.lower().startswith("no data"):
+                out[sym] = pd.DataFrame()
+                continue
+            from io import StringIO
+            df = pd.read_csv(StringIO(text))
+            if df.empty or "Date" not in df.columns:
+                out[sym] = pd.DataFrame()
+                continue
+            df.columns = [str(c).lower() for c in df.columns]
+            df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
+            df = df.dropna(subset=["date"]).set_index("date").sort_index()
+            out[sym] = df[df.index >= cutoff]
+        except Exception as e:
+            logger.warning(f"Public market data fetch failed for {sym}: {e}")
+            out[sym] = pd.DataFrame()
+    return out
 
 
 def _available_strategies(active_name: str) -> list[dict]:
@@ -1369,11 +1405,11 @@ def create_app(cfg: Config) -> FastAPI:
             return value / 100.0
 
         try:
-            max_position_pct = _pct_field("max_position_pct", "Max position")
+            max_position_pct = _pct_field("max_position_pct", "Max strategy exposure")
             daily_loss_limit_pct = _pct_field("daily_loss_limit_pct", "Daily loss cap")
             min_cash_buffer_pct = _pct_field("min_cash_buffer_pct", "Min cash buffer")
             if max_position_pct + min_cash_buffer_pct > 1.0:
-                raise ValueError("Max position plus min cash buffer cannot exceed 100%")
+                raise ValueError("Max strategy exposure plus min cash buffer cannot exceed 100%")
 
             raw = _apply_risk_update(_load_config_yaml(), {
                 "max_position_pct": max_position_pct,
@@ -1690,18 +1726,23 @@ def create_app(cfg: Config) -> FastAPI:
             return JSONResponse({"error": "dashboard is read-only"}, status_code=403)
         if not _allow_rate(action_hits, f"{_client_key(request)}:advisors", 3, 900):
             return RedirectResponse("/advisors?err=Too+many+advisor+refreshes", 303)
-        if not broker_reads_enabled:
-            return RedirectResponse("/advisors?err=Broker+data+reads+are+disabled+for+the+dashboard", 303)
         if not cfg.deepseek.enabled:
             return RedirectResponse("/advisors?err=DEEPSEEK_API_KEY+not+configured", 303)
 
-        try:
-            data_client = DataClient(cfg.alpaca)
-            # Use the mixed-universe fetcher so BTC/USD and similar crypto
-            # symbols hit the crypto endpoint instead of returning empty.
-            bars = data_client.bars_for_universe(cfg.universe, lookback_days=400)
-        except Exception as e:
-            return RedirectResponse(f"/advisors?err=Alpaca+data+error:+{e}", 303)
+        bars: dict[str, pd.DataFrame] = {}
+        if cfg.alpaca.api_key != "dashboard-disabled":
+            try:
+                data_client = DataClient(cfg.alpaca)
+                # Use the mixed-universe fetcher so BTC/USD and similar crypto
+                # symbols hit the crypto endpoint instead of returning empty.
+                bars = data_client.bars_for_universe(cfg.universe, lookback_days=400)
+            except Exception as e:
+                logger.warning(f"Advisor Alpaca market-data fetch failed; falling back to public data: {e}")
+
+        missing = [s for s in cfg.universe if bars.get(s) is None or bars.get(s, pd.DataFrame()).empty]
+        if missing:
+            public_bars = _public_daily_bars(missing, lookback_days=400)
+            bars.update({sym: df for sym, df in public_bars.items() if not df.empty})
 
         # Build per-symbol context (numeric only — never includes API keys).
         contexts = {}

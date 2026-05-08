@@ -102,8 +102,9 @@
       <div class="muted mini">{{ health.latest_order_age }}</div>
     </div>
     <div class="stat">
-      <div class="label">Max position</div>
+      <div class="label">Max strategy exposure</div>
       <div class="value" style="font-size:1.05rem">{{ "%.0f%%" | format(cfg.risk.max_position_pct * 100) }}</div>
+      <div class="muted mini">strategy allocations are scaled inside this cap</div>
     </div>
     <div class="stat">
       <div class="label">Cash buffer</div>
