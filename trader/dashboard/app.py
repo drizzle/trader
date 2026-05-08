@@ -115,11 +115,18 @@ _APPLE_TOUCH_ICON_PNG = _safe_b64_decode(
 )
 
 
-def _read_signals(db_path: Path, limit: int = 50) -> list[dict]:
+def _read_signals(db_path: Path, limit: int = 50, strategy: str | None = None) -> list[dict]:
     if not db_path.exists():
         return []
     with sqlite3.connect(db_path) as c:
         c.row_factory = sqlite3.Row
+        if strategy:
+            rows = c.execute(
+                "SELECT ts_utc, strategy, symbol, target_pct, rationale "
+                "FROM signals WHERE strategy = ? ORDER BY id DESC LIMIT ?",
+                (strategy, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
         rows = c.execute(
             "SELECT ts_utc, strategy, symbol, target_pct, rationale "
             "FROM signals ORDER BY id DESC LIMIT ?", (limit,)
@@ -227,6 +234,18 @@ def _read_latest_row(db_path: Path, table: str) -> dict | None:
     with sqlite3.connect(db_path) as c:
         c.row_factory = sqlite3.Row
         row = c.execute(f"SELECT * FROM {table} ORDER BY id DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+
+def _read_latest_signal(db_path: Path, strategy: str) -> dict | None:
+    if not db_path.exists():
+        return None
+    with sqlite3.connect(db_path) as c:
+        c.row_factory = sqlite3.Row
+        row = c.execute(
+            "SELECT * FROM signals WHERE strategy = ? ORDER BY id DESC LIMIT 1",
+            (strategy,),
+        ).fetchone()
         return dict(row) if row else None
 
 
@@ -860,12 +879,21 @@ def create_app(cfg: Config) -> FastAPI:
         return RedirectResponse(url=safe_next, status_code=303)
 
     @app.get("/strategy", response_class=HTMLResponse)
-    def strategy_view(request: Request, msg: str = "", err: str = ""):
+    def strategy_view(
+        request: Request,
+        msg: str = "",
+        err: str = "",
+        signal_scope: str = "active",
+    ):
         view_started = time.perf_counter()
-        signals = _read_signals(cfg.db_path, limit=20)
+        signal_scope = signal_scope if signal_scope in {"active", "all"} else "active"
+        active_signals = _read_signals(cfg.db_path, limit=20, strategy=cfg.strategy.name)
+        all_signals = _read_signals(cfg.db_path, limit=50)
+        signals = active_signals if signal_scope == "active" else all_signals
+        inactive_signal_count = sum(1 for s in all_signals if s.get("strategy") != cfg.strategy.name)
         storage = Storage(cfg.db_path)
         kill_engaged = Path(cfg.risk.kill_switch_path).exists()
-        latest_signal = _read_latest_row(cfg.db_path, "signals")
+        latest_signal = _read_latest_signal(cfg.db_path, cfg.strategy.name)
         latest_order = _read_latest_row(cfg.db_path, "orders")
         latest_equity = _read_latest_row(cfg.db_path, "equity_snapshots")
         pending_action = storage.latest_pending_action("strategy_switch")
@@ -921,6 +949,8 @@ def create_app(cfg: Config) -> FastAPI:
             flags.append(f"Strategy switch staged: {target}")
         if api_status == "bad":
             flags.append("Alpaca API unavailable")
+        if not latest_signal:
+            flags.append(f"No signal yet for active strategy {cfg.strategy.name}")
         if stale_signal:
             flags.append("Signal history looks stale")
         if stale_equity:
@@ -940,6 +970,10 @@ def create_app(cfg: Config) -> FastAPI:
             "available_strategies": _available_strategies(cfg.strategy.name),
             "strategy_details": strategy_details,
             "signals": signals,
+            "signal_scope": signal_scope,
+            "active_signal_count": len(active_signals),
+            "all_signal_count": len(all_signals),
+            "inactive_signal_count": inactive_signal_count,
             "latest_signal": latest_signal,
             "latest_order": latest_order,
             "latest_equity": latest_equity,

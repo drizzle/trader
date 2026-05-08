@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 from fastapi.testclient import TestClient
 
 from trader.cli import _apply_strategy_update
 from trader.config import load_config
-from trader.dashboard.app import _apply_risk_update, _restart_trader_service, create_app
+from trader.dashboard.app import (
+    _apply_risk_update,
+    _read_latest_signal,
+    _read_signals,
+    _restart_trader_service,
+    create_app,
+)
+from trader.storage import Storage
 
 
 def _config() -> dict:
@@ -229,3 +238,26 @@ storage:
     response = client.post("/risk/kill-switch/engage", follow_redirects=False)
 
     assert response.status_code == 403
+
+
+def test_strategy_signal_reads_filter_to_active_strategy(tmp_path) -> None:
+    db_path = tmp_path / "trader.db"
+    Storage(db_path)
+    with sqlite3.connect(db_path) as c:
+        c.execute(
+            "INSERT INTO signals (ts_utc, strategy, symbol, target_pct, rationale) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("2026-05-05T15:00:00+00:00", "btc_sma", "BTC/USD", 0.95, "old"),
+        )
+        c.execute(
+            "INSERT INTO signals (ts_utc, strategy, symbol, target_pct, rationale) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("2026-05-05T16:00:00+00:00", "Golden Tech", "SPY", 0.2, "active"),
+        )
+
+    active = _read_signals(db_path, strategy="Golden Tech")
+    latest = _read_latest_signal(db_path, "Golden Tech")
+
+    assert [row["strategy"] for row in active] == ["Golden Tech"]
+    assert latest is not None
+    assert latest["symbol"] == "SPY"

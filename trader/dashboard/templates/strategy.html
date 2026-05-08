@@ -169,11 +169,13 @@
   {% if latest_signal or latest_order %}
     <div class="grid grid-3">
       <div class="stat">
-        <div class="label">Latest signal</div>
+        <div class="label">Latest active signal</div>
         <div class="value" style="font-size:1.05rem">
           {% if latest_signal %}{{ latest_signal.symbol }} {{ "%.0f%%" | format(latest_signal.target_pct * 100) }}{% else %}n/a{% endif %}
         </div>
-        <div class="muted mini">{% if latest_signal %}{{ latest_signal.ts_utc }}{% endif %}</div>
+        <div class="muted mini">
+          {% if latest_signal %}{{ latest_signal.strategy }} · {{ latest_signal.ts_utc | pacific }}{% else %}{{ cfg.strategy.name }} has not ticked yet{% endif %}
+        </div>
       </div>
       <div class="stat">
         <div class="label">Latest order</div>
@@ -196,18 +198,38 @@
 </div>
 
 <div class="card">
-  <h2>Recent Signals</h2>
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+    <h2 style="margin:0;">Signal History</h2>
+    <div class="strategy-tabs">
+      <a href="/strategy?strategy={{ strategy_details.name }}&signal_scope=active"
+         class="{% if signal_scope == 'active' %}active{% endif %}">
+        Active · {{ active_signal_count }}
+      </a>
+      <a href="/strategy?strategy={{ strategy_details.name }}&signal_scope=all"
+         class="{% if signal_scope == 'all' %}active{% endif %}">
+        All · {{ all_signal_count }}
+      </a>
+    </div>
+  </div>
+  <div class="muted mini" style="margin-top:10px;">
+    {% if signal_scope == 'active' %}
+      Showing only signals emitted by the deployed strategy <code>{{ cfg.strategy.name }}</code>.
+      {% if inactive_signal_count %}{{ inactive_signal_count }} older signal{{ "" if inactive_signal_count == 1 else "s" }} from other strategies are hidden here.{% endif %}
+    {% else %}
+      Showing every recorded signal across strategy switches.
+    {% endif %}
+  </div>
   {% if signals %}
   <div class="scroll">
     <table>
       <thead><tr>
-        <th>Timestamp (UTC)</th><th>Strategy</th><th>Symbol</th>
+        <th>Timestamp (PT)</th><th>Strategy</th><th>Symbol</th>
         <th>Target</th><th>Rationale</th>
       </tr></thead>
       <tbody>
       {% for s in signals %}
         <tr>
-          <td>{{ s.ts_utc }}</td>
+          <td>{{ s.ts_utc | pacific }}</td>
           <td>{{ s.strategy }}</td>
           <td>{{ s.symbol }}</td>
           <td>{{ "%.2f%%" | format(s.target_pct * 100) }}</td>
@@ -218,7 +240,7 @@
     </table>
   </div>
   {% else %}
-    <div class="empty">No signals yet — bot may not have ticked while market was open.</div>
+    <div class="empty">No {{ cfg.strategy.name }} signals yet — the active strategy may not have ticked since deployment.</div>
   {% endif %}
 </div>
 
