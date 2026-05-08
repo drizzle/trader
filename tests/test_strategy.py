@@ -16,13 +16,14 @@ from alpaca.trading.enums import OrderSide
 
 from trader.config import RiskConfig
 from trader.backtest import run_backtest
-from trader.main import _enforce_cash_buffer
+from trader.main import _enforce_cash_buffer, _scale_signals_for_cash_buffer
 from trader.risk import RiskCheck
 from trader.composer_research import parse_composer_json
 from trader.storage import Storage
 from trader.strategy.base import Signal, Strategy
 from trader.strategy.sma_crossover import SmaCrossoverStrategy
 from trader.strategy import yypt_tqqq_rsi
+from trader.strategy.composer_strategy import ComposerStrategy
 from trader.strategy.yypt_tqqq_rsi import YyptTqqqRsiStrategy
 
 
@@ -262,6 +263,52 @@ def test_cash_buffer_submits_once_without_pending_orders():
         assert execution.submitted == [
             ("SPY", 2.0, OrderSide.SELL, "cash-buffer-test:cash_buffer")
         ]
+
+
+def test_live_signals_scale_to_cash_buffer_instead_of_skipping_orders():
+    cfg = SimpleNamespace(risk=RiskConfig(min_cash_buffer_pct=0.1))
+    signals = [
+        Signal("AAA", 0.60, "composer:test"),
+        Signal("BBB", 0.35, "composer:test"),
+        Signal("CCC", 0.00, "flat (composer)"),
+    ]
+
+    scaled = _scale_signals_for_cash_buffer(cfg, signals)
+
+    assert sum(s.target_pct for s in scaled) == pytest.approx(0.90)
+    assert scaled[0].target_pct == pytest.approx(0.60 * (0.90 / 0.95))
+    assert scaled[1].target_pct == pytest.approx(0.35 * (0.90 / 0.95))
+    assert scaled[2].target_pct == 0.0
+    assert "scaled by" in scaled[0].rationale
+
+
+def test_composer_cash_fallback_allocates_residual_to_sgov():
+    spec = {
+        "name": "fallback-test",
+        "step": "root",
+        "children": [{
+            "step": "wt-cash-specified",
+            "children": [{
+                "step": "asset",
+                "ticker": "AAA",
+                "weight": {"num": "50", "den": "100"},
+            }],
+        }],
+    }
+    strat = ComposerStrategy(
+        spec=spec,
+        name="fallback-test",
+        target_allocation=0.90,
+        cash_fallback_symbol="SGOV",
+    )
+
+    targets = {s.symbol: s.target_pct for s in strat.compute({"AAA": _bars_from_closes([1.0])})}
+    rationales = {s.symbol: s.rationale for s in strat.compute({"AAA": _bars_from_closes([1.0])})}
+
+    assert strat.universe == ["AAA", "SGOV"]
+    assert targets["AAA"] == pytest.approx(0.45)
+    assert targets["SGOV"] == pytest.approx(0.45)
+    assert rationales["SGOV"] == "cash fallback:fallback-test"
 
 
 def test_risk_position_size_limit():

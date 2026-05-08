@@ -191,8 +191,8 @@ def _make_composer_class(spec: dict):
 
     Adds a kwarg-tolerant __init__ so the registry can call it with the
     same `(**params)` shape it uses for all other strategies. config.yaml's
-    `strategy.params.target_allocation` (if any) is honored; everything
-    else is ignored.
+    `strategy.params.target_allocation` (if any) is honored. Golden Tech also
+    maps unallocated Composer cash to SGOV unless explicitly overridden.
     """
     name = spec.get("name") or "composer_unnamed"
     source_path = spec.get("_source_path", "(inline)")
@@ -211,9 +211,20 @@ def _make_composer_class(spec: dict):
     class _ComposerWrapped(ComposerStrategy):
         pass
 
-    def _init(self, target_allocation: float = 0.95, **ignored):
+    def _init(
+        self,
+        target_allocation: float = 0.95,
+        cash_fallback_symbol: str | None = None,
+        **ignored,
+    ):
+        if cash_fallback_symbol is None and name == "Golden Tech":
+            cash_fallback_symbol = "SGOV"
         ComposerStrategy.__init__(
-            self, spec=spec, name=name, target_allocation=target_allocation
+            self,
+            spec=spec,
+            name=name,
+            target_allocation=target_allocation,
+            cash_fallback_symbol=cash_fallback_symbol,
         )
 
     _ComposerWrapped.__init__ = _init

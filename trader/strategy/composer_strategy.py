@@ -155,12 +155,15 @@ class ComposerStrategy(Strategy):
         spec: dict | None = None,
         name: str | None = None,
         target_allocation: float = 0.95,
+        cash_fallback_symbol: str | None = None,
     ):
         """Construct from either a file path or an in-memory spec dict.
 
         target_allocation scales every leaf weight by this factor — Composer
         symphonies typically allocate to 100% but our risk manager keeps a
         cash buffer (default 2%), so 0.95 is a safe default.
+        cash_fallback_symbol, when set, receives any unallocated Composer cash
+        sleeve inside target_allocation.
         """
         if spec is None:
             if path is None:
@@ -173,7 +176,12 @@ class ComposerStrategy(Strategy):
         self._spec = spec
         self.name = name or spec.get("name") or "composer"
         self._target_allocation = target_allocation
+        self._cash_fallback_symbol = (
+            _normalize_ticker(cash_fallback_symbol) if cash_fallback_symbol else None
+        )
         self._symbols = self._collect_symbols(spec)
+        if self._cash_fallback_symbol and self._cash_fallback_symbol not in self._symbols:
+            self._symbols.append(self._cash_fallback_symbol)
         self.is_crypto = False  # Composer uses equity tickers via Alpaca stock feed
 
     @property
@@ -211,11 +219,24 @@ class ComposerStrategy(Strategy):
             logger.error(f"composer eval failed for {self.name}: {e}")
             return [Signal(s, 0.0, "composer eval error") for s in self._symbols]
 
+        if self._cash_fallback_symbol:
+            invested = sum(weights.values())
+            residual = max(0.0, self._target_allocation - invested)
+            if residual > 0:
+                weights[self._cash_fallback_symbol] = (
+                    weights.get(self._cash_fallback_symbol, 0.0) + residual
+                )
+
         signals: list[Signal] = []
         for sym, w in weights.items():
             w = round(w, 6)
             if w > 0:
-                signals.append(Signal(sym, w, f"composer:{self.name}"))
+                rationale = (
+                    f"cash fallback:{self.name}"
+                    if sym == self._cash_fallback_symbol
+                    else f"composer:{self.name}"
+                )
+                signals.append(Signal(sym, w, rationale))
             else:
                 signals.append(Signal(sym, 0.0, "flat (composer)"))
         return signals

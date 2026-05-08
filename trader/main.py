@@ -159,6 +159,35 @@ def _enforce_cash_buffer(
     return False
 
 
+def _scale_signals_for_cash_buffer(cfg: Config, signals: list[Signal]) -> list[Signal]:
+    """Reduce aggregate exposure to fit the configured cash buffer.
+
+    The backtester already does this, and live trading should behave the same
+    way: a 95% Composer allocation with a 10% cash buffer becomes 90% exposure
+    instead of skipping every buy order.
+    """
+    total_target = sum(s.target_pct for s in signals)
+    max_total = max(0.0, 1.0 - cfg.risk.min_cash_buffer_pct)
+    if total_target <= max_total or total_target <= 0:
+        return signals
+
+    scale = max_total / total_target if max_total > 0 else 0.0
+    logger.warning(
+        f"Targeted exposure {total_target:.2%} would breach cash buffer "
+        f"{cfg.risk.min_cash_buffer_pct:.2%}; scaling targets by {scale:.3f}"
+    )
+    return [
+        Signal(
+            s.symbol,
+            s.target_pct * scale,
+            f"{s.rationale} | scaled by {scale:.3f} for cash buffer",
+        )
+        if s.target_pct > 0
+        else s
+        for s in signals
+    ]
+
+
 def _process_pending_strategy_switch(
     *,
     storage: Storage,
@@ -258,7 +287,9 @@ def tick(
         f"Account: equity=${account.equity:,.2f} cash=${account.cash:,.2f} "
         f"bp=${account.buying_power:,.2f} mode={'LIVE' if execution.live else 'PAPER'}"
     )
-    execution.reconcile_recent_orders(lookback_minutes=240)
+    # Include prior-day DAY orders so the dashboard/local pending-order view
+    # does not leave expired or filled orders stuck as "submitted".
+    execution.reconcile_recent_orders(lookback_minutes=3 * 24 * 60)
 
     if _process_pending_strategy_switch(storage=storage, execution=execution, cfg=cfg):
         return
@@ -312,6 +343,7 @@ def tick(
         logger.info(f"Signal: {s.symbol} target={s.target_pct:.2%} ({s.rationale})")
 
     # 4. Cash-buffer guard on aggregate exposure.
+    signals = _scale_signals_for_cash_buffer(cfg, signals)
     total_target = sum(s.target_pct for s in signals)
     cash = risk.check_cash_buffer(total_target)
     if not cash.allow:
